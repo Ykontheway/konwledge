@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U02 adds the first validated domain models for sources, documents, knowledge units, revisions, and citations. The implementation remains intentionally small while the knowledge lifecycle is built incrementally.
+> Status: pre-alpha. U03 adds SQLite metadata persistence, typed repositories, and explicit transaction boundaries. The implementation remains intentionally small while the knowledge lifecycle is built incrementally.
 
 ## Why this project
 
@@ -64,6 +64,12 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 │   ├── domain/
 │   │   ├── __init__.py
 │   │   └── models.py
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   ├── database.py
+│   │   ├── repository.py
+│   │   ├── tables.py
+│   │   └── unit_of_work.py
 │   ├── __init__.py
 │   ├── __main__.py
 │   └── cli.py
@@ -73,7 +79,7 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 └── pyproject.toml
 ```
 
-The remaining modules will be added only when they gain executable behavior: `ingestion`, `lifecycle`, `storage`, `retrieval`, `evaluation`, `providers`, and `api`.
+The remaining modules will be added only when they gain executable behavior: `ingestion`, `lifecycle`, `retrieval`, `evaluation`, `providers`, and `api`.
 
 ## Domain models
 
@@ -86,6 +92,19 @@ U02 introduces five immutable [Pydantic v2](https://docs.pydantic.dev/) models u
 - `Citation` links model-ready context back to an exact knowledge unit.
 
 The models reject unknown fields, require timezone-aware timestamps, and support JSON roundtrips through `model_dump_json()` and `model_validate_json()`. Document checksums use lowercase SHA-256 hex strings. Character ranges use a half-open convention: `start_char` is inclusive and `end_char` is exclusive.
+
+## SQLite metadata storage
+
+U03 persists the domain graph with SQLAlchemy 2.x and SQLite. `Source`, `Document`, `KnowledgeUnit`, `Revision`, and `Citation` each have a typed repository, while `UnitOfWork` keeps commit and rollback boundaries explicit.
+
+SQLite foreign-key enforcement is enabled for every connection. Tests use an isolated in-memory database and cover roundtrips, updates, deletes, constraint failures, commits, and rollbacks. Create an application database with:
+
+```python
+from konwledge.storage import create_schema, create_sqlite_engine
+
+engine = create_sqlite_engine("sqlite:///konwledge.db")
+create_schema(engine)
+```
 
 ## License
 
