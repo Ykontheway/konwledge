@@ -22,6 +22,7 @@ from konwledge.domain import (
 )
 from konwledge.storage import (
     EntityNotFoundError,
+    ImmutableEntityError,
     SessionFactory,
     UnitOfWork,
     create_schema,
@@ -34,6 +35,9 @@ DOCUMENT_ID = UUID("20000000-0000-0000-0000-000000000002")
 UNIT_ID = UUID("30000000-0000-0000-0000-000000000003")
 REVISION_ID = UUID("40000000-0000-0000-0000-000000000004")
 CITATION_ID = UUID("50000000-0000-0000-0000-000000000005")
+SECOND_SOURCE_ID = UUID("10000000-0000-0000-0000-000000000011")
+SECOND_DOCUMENT_ID = UUID("20000000-0000-0000-0000-000000000012")
+SECOND_CITATION_ID = UUID("50000000-0000-0000-0000-000000000015")
 NOW = datetime(2026, 10, 15, 9, 30, tzinfo=UTC)
 
 
@@ -191,3 +195,78 @@ def test_unit_of_work_requires_context(session_factory: SessionFactory) -> None:
     uow = UnitOfWork(session_factory)
     with pytest.raises(RuntimeError, match="inside a with block"):
         uow.commit()
+
+
+def test_repository_update_flushes_constraint_failures(session_factory: SessionFactory) -> None:
+    second_document = make_document().model_copy(
+        update={"id": SECOND_DOCUMENT_ID, "locator": "second.md"}
+    )
+    with UnitOfWork(session_factory) as uow:
+        uow.sources.add(make_source())
+        uow.documents.add(make_document())
+        uow.documents.add(second_document)
+        uow.commit()
+
+    duplicate_document = second_document.model_copy(update={"locator": "knowledge.md"})
+    with UnitOfWork(session_factory) as uow:
+        with pytest.raises(IntegrityError):
+            uow.documents.update(duplicate_document)
+        uow.rollback()
+
+
+def test_repository_delete_flushes_constraint_failures(session_factory: SessionFactory) -> None:
+    with UnitOfWork(session_factory) as uow:
+        uow.sources.add(make_source())
+        uow.documents.add(make_document())
+        uow.commit()
+
+    with UnitOfWork(session_factory) as uow:
+        with pytest.raises(IntegrityError):
+            uow.sources.delete(SOURCE_ID)
+        uow.rollback()
+
+
+def test_citation_rejects_mismatched_source_and_document(
+    session_factory: SessionFactory,
+) -> None:
+    second_source = make_source().model_copy(
+        update={"id": SECOND_SOURCE_ID, "uri": "notes/second.md"}
+    )
+    mismatched_citation = make_citation().model_copy(
+        update={"id": SECOND_CITATION_ID, "source_id": SECOND_SOURCE_ID}
+    )
+    with UnitOfWork(session_factory) as uow:
+        uow.sources.add(make_source())
+        uow.sources.add(second_source)
+        uow.documents.add(make_document())
+        uow.knowledge_units.add(make_unit())
+        with pytest.raises(IntegrityError):
+            uow.citations.add(mismatched_citation)
+        uow.rollback()
+
+
+def test_citation_rejects_mismatched_document_and_knowledge_unit(
+    session_factory: SessionFactory,
+) -> None:
+    second_document = make_document().model_copy(
+        update={"id": SECOND_DOCUMENT_ID, "locator": "second.md"}
+    )
+    mismatched_citation = make_citation().model_copy(
+        update={"id": SECOND_CITATION_ID, "document_id": SECOND_DOCUMENT_ID}
+    )
+    with UnitOfWork(session_factory) as uow:
+        uow.sources.add(make_source())
+        uow.documents.add(make_document())
+        uow.documents.add(second_document)
+        uow.knowledge_units.add(make_unit())
+        with pytest.raises(IntegrityError):
+            uow.citations.add(mismatched_citation)
+        uow.rollback()
+
+
+def test_revision_repository_is_append_only(session_factory: SessionFactory) -> None:
+    with UnitOfWork(session_factory) as uow:
+        with pytest.raises(ImmutableEntityError, match="append-only"):
+            uow.revisions.update(make_revision())
+        with pytest.raises(ImmutableEntityError, match="append-only"):
+            uow.revisions.delete(REVISION_ID)

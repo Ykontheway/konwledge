@@ -41,7 +41,8 @@ class UnitOfWork:
         if self._session is None:
             return
         try:
-            self._session.rollback()
+            if self._session.in_transaction():
+                self._session.rollback()
         finally:
             self._session.close()
             self._session = None

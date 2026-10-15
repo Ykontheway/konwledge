@@ -41,6 +41,10 @@ class EntityNotFoundError(LookupError):
     """Raised when an update targets an entity that is not stored."""
 
 
+class ImmutableEntityError(TypeError):
+    """Raised when immutable history is updated or deleted."""
+
+
 class SqlAlchemyRepository(ABC, Generic[EntityT, RowT]):
     """Shared synchronous repository behavior with explicit model mapping."""
 
@@ -66,12 +70,14 @@ class SqlAlchemyRepository(ABC, Generic[EntityT, RowT]):
         if row is None:
             raise EntityNotFoundError(f"{self._row_type.__name__} {entity_id} was not found")
         self._apply(row, entity)
+        self._session.flush()
 
     def delete(self, entity_id: UUID) -> bool:
         row = self._session.get(self._row_type, entity_id)
         if row is None:
             return False
         self._session.delete(row)
+        self._session.flush()
         return True
 
     @abstractmethod
@@ -217,6 +223,12 @@ class KnowledgeUnitRepository(SqlAlchemyRepository[KnowledgeUnit, KnowledgeUnitR
 class RevisionRepository(SqlAlchemyRepository[Revision, RevisionRow]):
     def __init__(self, session: Session) -> None:
         super().__init__(session, RevisionRow)
+
+    def update(self, entity: Revision) -> None:
+        raise ImmutableEntityError("revision history is append-only")
+
+    def delete(self, entity_id: UUID) -> bool:
+        raise ImmutableEntityError("revision history is append-only")
 
     def _entity_id(self, entity: Revision) -> UUID:
         return entity.id

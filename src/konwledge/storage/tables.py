@@ -10,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     Text,
@@ -38,7 +39,10 @@ class SourceRow(Base):
 
 class DocumentRow(Base):
     __tablename__ = "documents"
-    __table_args__ = (UniqueConstraint("source_id", "locator", "checksum"),)
+    __table_args__ = (
+        UniqueConstraint("source_id", "locator", "checksum"),
+        UniqueConstraint("id", "source_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     source_id: Mapped[UUID] = mapped_column(
@@ -57,6 +61,7 @@ class KnowledgeUnitRow(Base):
     __tablename__ = "knowledge_units"
     __table_args__ = (
         UniqueConstraint("document_id", "ordinal"),
+        UniqueConstraint("id", "document_id"),
         CheckConstraint("ordinal >= 0"),
         CheckConstraint("start_char >= 0"),
         CheckConstraint("end_char > start_char"),
@@ -97,6 +102,16 @@ class RevisionRow(Base):
 class CitationRow(Base):
     __tablename__ = "citations"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["document_id", "source_id"],
+            ["documents.id", "documents.source_id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["knowledge_unit_id", "document_id"],
+            ["knowledge_units.id", "knowledge_units.document_id"],
+            ondelete="RESTRICT",
+        ),
         CheckConstraint("start_char IS NULL OR start_char >= 0"),
         CheckConstraint(
             "(start_char IS NULL AND end_char IS NULL) OR "
@@ -106,15 +121,9 @@ class CitationRow(Base):
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-    source_id: Mapped[UUID] = mapped_column(
-        ForeignKey("sources.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    document_id: Mapped[UUID] = mapped_column(
-        ForeignKey("documents.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    knowledge_unit_id: Mapped[UUID] = mapped_column(
-        ForeignKey("knowledge_units.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
+    source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    document_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    knowledge_unit_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
     quote: Mapped[str] = mapped_column(Text, nullable=False)
     locator: Mapped[str | None] = mapped_column(Text)
     start_char: Mapped[int | None] = mapped_column(Integer)

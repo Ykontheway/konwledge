@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
@@ -50,13 +49,3 @@ def create_session_factory(engine: Engine) -> SessionFactory:
     """Build sessions with explicit transaction completion and stable entity state."""
 
     return sessionmaker(bind=engine, expire_on_commit=False)
-
-
-def session_scope(factory: SessionFactory) -> Iterator[Session]:
-    """Yield a session and always close it without implicitly committing."""
-
-    session = factory()
-    try:
-        yield session
-    finally:
-        session.close()
