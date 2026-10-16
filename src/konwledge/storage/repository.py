@@ -138,6 +138,18 @@ class DocumentRepository(SqlAlchemyRepository[Document, DocumentRow]):
     def __init__(self, session: Session) -> None:
         super().__init__(session, DocumentRow)
 
+    def get_by_import_identity(
+        self, *, source_id: UUID, locator: str, checksum: str
+    ) -> Document | None:
+        row = self._session.scalar(
+            select(DocumentRow).where(
+                DocumentRow.source_id == source_id,
+                DocumentRow.locator == locator,
+                DocumentRow.checksum == checksum,
+            )
+        )
+        return None if row is None else self._to_entity(row)
+
     def _entity_id(self, entity: Document) -> UUID:
         return entity.id
 
