@@ -133,6 +133,17 @@ def test_knowledge_unit_normalizes_tags() -> None:
     assert unit.tags == {"rag", "traceability"}
 
 
+def test_knowledge_unit_preserves_traceable_text_whitespace() -> None:
+    unit = make_unit(text="  exact text\n\n", end_char=14)
+    assert unit.text == "  exact text\n\n"
+
+
+def test_knowledge_unit_normalizes_heading_and_section_path() -> None:
+    unit = make_unit(heading="  Child  ", section_path=(" Root ", " Child "))
+    assert unit.heading == "Child"
+    assert unit.section_path == ("Root", "Child")
+
+
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
@@ -171,6 +182,8 @@ def test_document_rejects_invalid_values(changes: dict[str, object]) -> None:
         {"start_char": -1},
         {"start_char": 10, "end_char": 10},
         {"start_char": 10, "end_char": 9},
+        {"heading": " "},
+        {"section_path": ("valid", " ")},
         {"tags": {"valid", " "}},
     ],
 )
