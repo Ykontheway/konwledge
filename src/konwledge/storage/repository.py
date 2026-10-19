@@ -190,6 +190,14 @@ class KnowledgeUnitRepository(SqlAlchemyRepository[KnowledgeUnit, KnowledgeUnitR
     def __init__(self, session: Session) -> None:
         super().__init__(session, KnowledgeUnitRow)
 
+    def list_by_document(self, document_id: UUID) -> Sequence[KnowledgeUnit]:
+        rows = self._session.scalars(
+            select(KnowledgeUnitRow)
+            .where(KnowledgeUnitRow.document_id == document_id)
+            .order_by(KnowledgeUnitRow.ordinal)
+        ).all()
+        return [self._to_entity(row) for row in rows]
+
     def _entity_id(self, entity: KnowledgeUnit) -> UUID:
         return entity.id
 
@@ -201,6 +209,8 @@ class KnowledgeUnitRepository(SqlAlchemyRepository[KnowledgeUnit, KnowledgeUnitR
             text=entity.text,
             start_char=entity.start_char,
             end_char=entity.end_char,
+            heading=entity.heading,
+            section_path=list(entity.section_path),
             status=entity.status.value,
             tags=sorted(entity.tags),
             metadata_json=entity.metadata,
@@ -215,6 +225,8 @@ class KnowledgeUnitRepository(SqlAlchemyRepository[KnowledgeUnit, KnowledgeUnitR
                 "text": row.text,
                 "start_char": row.start_char,
                 "end_char": row.end_char,
+                "heading": row.heading,
+                "section_path": tuple(row.section_path),
                 "status": row.status,
                 "tags": set(row.tags),
                 "metadata": row.metadata_json,
@@ -227,6 +239,8 @@ class KnowledgeUnitRepository(SqlAlchemyRepository[KnowledgeUnit, KnowledgeUnitR
         row.text = entity.text
         row.start_char = entity.start_char
         row.end_char = entity.end_char
+        row.heading = entity.heading
+        row.section_path = list(entity.section_path)
         row.status = entity.status.value
         row.tags = sorted(entity.tags)
         row.metadata_json = entity.metadata

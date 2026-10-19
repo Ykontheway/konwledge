@@ -121,15 +121,44 @@ class Document(KonwledgeModel):
 class KnowledgeUnit(KonwledgeModel):
     """A traceable text unit that can be indexed and retrieved independently."""
 
+    model_config = ConfigDict(str_strip_whitespace=False)
+
     id: UUID
     document_id: UUID
     ordinal: int = Field(ge=0)
     text: str = Field(min_length=1)
     start_char: int = Field(ge=0)
     end_char: int
+    heading: str | None = None
+    section_path: tuple[str, ...] = ()
     status: KnowledgeUnitStatus = KnowledgeUnitStatus.ACTIVE
     tags: set[str] = Field(default_factory=set)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must contain non-whitespace content")
+        return value
+
+    @field_validator("heading")
+    @classmethod
+    def validate_heading(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("heading must not be empty when provided")
+        return normalized
+
+    @field_validator("section_path")
+    @classmethod
+    def normalize_section_path(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(part.strip() for part in value)
+        if any(not part for part in normalized):
+            raise ValueError("section_path entries must not be empty")
+        return normalized
 
     @field_validator("tags")
     @classmethod

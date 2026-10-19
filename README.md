@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U04 adds deterministic Markdown and TXT loading with idempotent metadata ingestion. The implementation remains intentionally small while the knowledge lifecycle is built incrementally.
+> Status: pre-alpha. U05 adds heading-aware, offset-preserving knowledge-unit splitting and persisted section paths. The implementation remains intentionally small while the knowledge lifecycle is built incrementally.
 
 ## Implemented increments
 
@@ -12,8 +12,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U02 | 2026-10-13 | Frozen domain models with validation and JSON roundtrips |
 | U03 | 2026-10-15 | SQLite schema, typed repositories, explicit transactions, and persistence tests |
 | U04 | 2026-10-16 | UTF-8 Markdown/TXT loading, normalization, SHA-256 fingerprints, and idempotent ingestion |
+| U05 | 2026-10-19 | Heading-aware splitting, exact character ranges, section paths, and persisted traceability |
 
-Each increment builds on the previous branch, so the U04 branch contains the complete U01-U04 implementation.
+Each increment builds on the previous branch, so the U05 branch contains the complete U01-U05 implementation.
 
 ## Why this project
 
@@ -79,7 +80,9 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 │   │   ├── __init__.py
 │   │   ├── loaders.py
 │   │   ├── normalization.py
-│   │   └── service.py
+│   │   ├── pipeline.py
+│   │   ├── service.py
+│   │   └── splitting.py
 │   ├── storage/
 │   │   ├── __init__.py
 │   │   ├── database.py
@@ -107,7 +110,7 @@ U02 introduces five immutable [Pydantic v2](https://docs.pydantic.dev/) models u
 - `Revision` records versioned changes without silently overwriting history;
 - `Citation` links model-ready context back to an exact knowledge unit.
 
-The models reject unknown fields, require timezone-aware timestamps, and support JSON roundtrips through `model_dump_json()` and `model_validate_json()`. Document checksums use lowercase SHA-256 hex strings. Character ranges use a half-open convention: `start_char` is inclusive and `end_char` is exclusive.
+The models reject unknown fields, require timezone-aware timestamps, and support JSON roundtrips through `model_dump_json()` and `model_validate_json()`. Document checksums use lowercase SHA-256 hex strings. Knowledge units preserve exact text whitespace, use half-open character ranges, and carry their current heading and full section path.
 
 ## SQLite metadata storage
 
@@ -135,6 +138,28 @@ from konwledge.storage import create_session_factory
 session_factory = create_session_factory(engine)
 result = FileIngestionService(session_factory).ingest(source_id)
 print(result.document.checksum, result.created)
+```
+
+## Traceable splitting
+
+U05 turns normalized document content into persisted `KnowledgeUnit` records. Markdown headings define section boundaries and hierarchical paths; headings inside fenced code blocks are ignored. Plain text and heading-free Markdown fall back to paragraph boundaries.
+
+Every unit stores an exact half-open range `[start_char, end_char)`. The invariant `content[start_char:end_char] == unit.text` makes the original location directly recoverable. `TraceableIngestionService` connects U04 ingestion with idempotent unit creation, while an existing document version reuses its stored units.
+
+```python
+from konwledge.ingestion import (
+    FileIngestionService,
+    KnowledgeUnitService,
+    TraceableIngestionService,
+)
+
+service = TraceableIngestionService(
+    FileIngestionService(session_factory),
+    KnowledgeUnitService(session_factory),
+)
+result = service.ingest(source_id)
+for unit in result.units:
+    assert result.ingestion.content[unit.start_char : unit.end_char] == unit.text
 ```
 
 ## License
