@@ -2,7 +2,19 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U01 establishes the project scaffold, quality checks, and continuous integration. The first working knowledge lifecycle will arrive incrementally.
+> Status: pre-alpha. U05 adds heading-aware, offset-preserving knowledge-unit splitting and persisted section paths. The implementation remains intentionally small while the knowledge lifecycle is built incrementally.
+
+## Implemented increments
+
+| Increment | Completed | Outcome |
+| --- | --- | --- |
+| U01 | 2026-10-12 | Installable package, CLI smoke test, linting, typing, tests, and CI |
+| U02 | 2026-10-13 | Frozen domain models with validation and JSON roundtrips |
+| U03 | 2026-10-15 | SQLite schema, typed repositories, explicit transactions, and persistence tests |
+| U04 | 2026-10-16 | UTF-8 Markdown/TXT loading, normalization, SHA-256 fingerprints, and idempotent ingestion |
+| U05 | 2026-10-19 | Heading-aware splitting, exact character ranges, section paths, and persisted traceability |
+
+Each increment builds on the previous branch, so the U05 branch contains the complete U01-U05 implementation.
 
 ## Why this project
 
@@ -61,6 +73,22 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 .
 ├── .github/workflows/ci.yml
 ├── src/konwledge/
+│   ├── domain/
+│   │   ├── __init__.py
+│   │   └── models.py
+│   ├── ingestion/
+│   │   ├── __init__.py
+│   │   ├── loaders.py
+│   │   ├── normalization.py
+│   │   ├── pipeline.py
+│   │   ├── service.py
+│   │   └── splitting.py
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   ├── database.py
+│   │   ├── repository.py
+│   │   ├── tables.py
+│   │   └── unit_of_work.py
 │   ├── __init__.py
 │   ├── __main__.py
 │   └── cli.py
@@ -70,7 +98,69 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 └── pyproject.toml
 ```
 
-Future modules will be added only when they gain executable behavior: `domain`, `ingestion`, `lifecycle`, `storage`, `retrieval`, `evaluation`, `providers`, and `api`.
+The remaining modules will be added only when they gain executable behavior: `lifecycle`, `retrieval`, `evaluation`, `providers`, and `api`.
+
+## Domain models
+
+U02 introduces five immutable [Pydantic v2](https://docs.pydantic.dev/) models under `konwledge.domain`:
+
+- `Source` records where imported knowledge originated;
+- `Document` identifies one normalized source document and its checksum;
+- `KnowledgeUnit` stores a traceable, independently retrievable text range;
+- `Revision` records versioned changes without silently overwriting history;
+- `Citation` links model-ready context back to an exact knowledge unit.
+
+The models reject unknown fields, require timezone-aware timestamps, and support JSON roundtrips through `model_dump_json()` and `model_validate_json()`. Document checksums use lowercase SHA-256 hex strings. Knowledge units preserve exact text whitespace, use half-open character ranges, and carry their current heading and full section path.
+
+## SQLite metadata storage
+
+U03 persists the domain graph with SQLAlchemy 2.x and SQLite. `Source`, `Document`, `KnowledgeUnit`, `Revision`, and `Citation` each have a typed repository, while `UnitOfWork` keeps commit and rollback boundaries explicit. Revision history is append-only; lifecycle services will create revision records alongside future domain changes.
+
+SQLite foreign-key enforcement is enabled for every connection. Tests use an isolated in-memory database and cover roundtrips, updates, deletes, constraint failures, commits, and rollbacks. Create an application database with:
+
+```python
+from konwledge.storage import create_schema, create_sqlite_engine
+
+engine = create_sqlite_engine("sqlite:///konwledge.db")
+create_schema(engine)
+```
+
+## Text ingestion
+
+U04 loads one UTF-8 `.md`, `.markdown`, or `.txt` file from a stored file `Source`. The loader removes an optional UTF-8 BOM, converts CRLF and CR line endings to LF, applies Unicode NFC normalization, and calculates a lowercase SHA-256 fingerprint. It preserves all other whitespace so later character offsets remain traceable to the normalized text.
+
+`FileIngestionService` returns both the persisted `Document` metadata and the normalized content needed by the U05 splitter. Importing the same source path and normalized content again returns the existing document instead of inserting a duplicate.
+
+```python
+from konwledge.ingestion import FileIngestionService
+from konwledge.storage import create_session_factory
+
+session_factory = create_session_factory(engine)
+result = FileIngestionService(session_factory).ingest(source_id)
+print(result.document.checksum, result.created)
+```
+
+## Traceable splitting
+
+U05 turns normalized document content into persisted `KnowledgeUnit` records. Markdown headings define section boundaries and hierarchical paths; headings inside fenced code blocks are ignored. Plain text and heading-free Markdown fall back to paragraph boundaries.
+
+Every unit stores an exact half-open range `[start_char, end_char)`. The invariant `content[start_char:end_char] == unit.text` makes the original location directly recoverable. `TraceableIngestionService` connects U04 ingestion with idempotent unit creation, while an existing document version reuses its stored units.
+
+```python
+from konwledge.ingestion import (
+    FileIngestionService,
+    KnowledgeUnitService,
+    TraceableIngestionService,
+)
+
+service = TraceableIngestionService(
+    FileIngestionService(session_factory),
+    KnowledgeUnitService(session_factory),
+)
+result = service.ingest(source_id)
+for unit in result.units:
+    assert result.ingestion.content[unit.start_char : unit.end_char] == unit.text
+```
 
 ## License
 
