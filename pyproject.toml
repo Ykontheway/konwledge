@@ -18,8 +18,10 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
+  "click>=8.1,<9",
   "pydantic>=2.7,<3",
   "sqlalchemy>=2.0,<3",
+  "typer>=0.12,<1",
 ]
 
 [project.urls]
@@ -27,6 +29,7 @@ Repository = "https://github.com/Ykontheway/konwledge"
 Issues = "https://github.com/Ykontheway/konwledge/issues"
 
 [project.scripts]
+knowledge = "konwledge.cli:main"
 konwledge = "konwledge.cli:main"
 
 [build-system]

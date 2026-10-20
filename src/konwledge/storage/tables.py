@@ -26,6 +26,7 @@ class Base(DeclarativeBase):
 
 class SourceRow(Base):
     __tablename__ = "sources"
+    __table_args__ = (UniqueConstraint("kind", "uri"),)
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)

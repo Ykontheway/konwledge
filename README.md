@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U05 adds heading-aware, offset-preserving knowledge-unit splitting and persisted section paths. The implementation remains intentionally small while the knowledge lifecycle is built incrementally.
+> Status: pre-alpha. U06 adds a Typer-based import and inspection CLI with automatic SQLite initialization, recursive corpus discovery, and clear errors. The implementation remains intentionally small while the knowledge lifecycle is built incrementally.
 
 ## Implemented increments
 
@@ -13,8 +13,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U03 | 2026-10-15 | SQLite schema, typed repositories, explicit transactions, and persistence tests |
 | U04 | 2026-10-16 | UTF-8 Markdown/TXT loading, normalization, SHA-256 fingerprints, and idempotent ingestion |
 | U05 | 2026-10-19 | Heading-aware splitting, exact character ranges, section paths, and persisted traceability |
+| U06 | 2026-10-20 | Typer import/list/show CLI, recursive corpus discovery, examples, and automatic local database setup |
 
-Each increment builds on the previous branch, so the U05 branch contains the complete U01-U05 implementation.
+Each increment builds on the previous branch, so the U06 branch contains the complete U01-U06 implementation.
 
 ## Why this project
 
@@ -47,14 +48,35 @@ Konwledge requires Python 3.11 or newer and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --dev
-uv run konwledge --version
+uv run knowledge --version
 ```
 
 Expected output:
 
 ```text
-konwledge 0.0.0
+knowledge 0.0.0
 ```
+
+## Import CLI
+
+The `knowledge` entry point creates the SQLite schema and parent directory automatically. Its
+default database is `.konwledge/knowledge.db`; pass `--database` (or `-d`) to every command when
+you want another explicit location. From an empty checkout, the shortest end-to-end path is:
+
+```bash
+uv run knowledge import examples --database .konwledge/demo.db
+uv run knowledge list --database .konwledge/demo.db
+uv run knowledge show <unit-id-from-list> --database .konwledge/demo.db
+```
+
+`import` accepts one `.md`, `.markdown`, or `.txt` file, or recursively discovers those formats in
+a directory. Files are processed in stable relative-path order; unrelated file formats in a
+directory are skipped and summarized. Reimporting unchanged content is idempotent, while changed
+content creates a new immutable document version and new traceable units.
+
+The legacy `konwledge` executable remains an alias for compatibility. Local SQLite databases are
+runtime data: keep them under `.konwledge/` or use a `*.db`/`*.sqlite` name, and do not commit them.
+These paths are covered by `.gitignore`.
 
 ## Development checks
 
@@ -91,7 +113,11 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 │   │   └── unit_of_work.py
 │   ├── __init__.py
 │   ├── __main__.py
+│   ├── application.py
 │   └── cli.py
+├── examples/
+│   ├── getting-started.md
+│   └── lifecycle.txt
 ├── tests/
 ├── LICENSE
 ├── README.md

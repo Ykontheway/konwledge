@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from konwledge.domain import Citation, Document, KnowledgeUnit, Revision, Source
+from konwledge.domain import Citation, Document, KnowledgeUnit, Revision, Source, SourceKind
 from konwledge.storage.tables import (
     CitationRow,
     DocumentRow,
@@ -100,6 +100,12 @@ class SqlAlchemyRepository(ABC, Generic[EntityT, RowT]):
 class SourceRepository(SqlAlchemyRepository[Source, SourceRow]):
     def __init__(self, session: Session) -> None:
         super().__init__(session, SourceRow)
+
+    def get_by_kind_uri(self, *, kind: SourceKind, uri: str) -> Source | None:
+        row = self._session.scalar(
+            select(SourceRow).where(SourceRow.kind == kind.value, SourceRow.uri == uri)
+        )
+        return None if row is None else self._to_entity(row)
 
     def _entity_id(self, entity: Source) -> UUID:
         return entity.id
