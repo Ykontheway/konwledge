@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U06 adds a Typer-based import and inspection CLI with automatic SQLite initialization, recursive corpus discovery, and clear errors. The implementation remains intentionally small while the knowledge lifecycle is built incrementally.
+> Status: pre-alpha. U07 adds an offline-friendly embedding layer: a provider protocol, a deterministic hash-based test provider, stable cache keys, and a batching + caching service. No network access or API keys are required for tests.
 
 ## Implemented increments
 
@@ -14,8 +14,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U04 | 2026-10-16 | UTF-8 Markdown/TXT loading, normalization, SHA-256 fingerprints, and idempotent ingestion |
 | U05 | 2026-10-19 | Heading-aware splitting, exact character ranges, section paths, and persisted traceability |
 | U06 | 2026-10-20 | Typer import/list/show CLI, recursive corpus discovery, examples, and automatic local database setup |
+| U07 | 2026-10-21 | Embedding provider protocol, deterministic hash test provider, batching service, and provider/model cache keys |
 
-Each increment builds on the previous branch, so the U06 branch contains the complete U01-U06 implementation.
+Each increment builds on the previous branch, so the U07 branch contains the complete U01-U07 implementation.
 
 ## Why this project
 
@@ -98,6 +99,10 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 │   ├── domain/
 │   │   ├── __init__.py
 │   │   └── models.py
+│   ├── embedding/
+│   │   ├── __init__.py
+│   │   ├── providers.py
+│   │   └── service.py
 │   ├── ingestion/
 │   │   ├── __init__.py
 │   │   ├── loaders.py
@@ -186,6 +191,30 @@ service = TraceableIngestionService(
 result = service.ingest(source_id)
 for unit in result.units:
     assert result.ingestion.content[unit.start_char : unit.end_char] == unit.text
+```
+
+## Embedding provider
+
+U07 introduces an offline-friendly embedding layer. The `EmbeddingProvider` protocol defines the minimal surface a backend must expose (`name`, `model`, `dimension`, and `embed`). `HashEmbeddingProvider` ships as a deterministic SHA-256 provider so tests never require network access or API keys.
+
+`EmbeddingService` adds batching, dimension checks, and a provider/model-aware cache key. The default `InMemoryEmbeddingCache` keeps repeated calls cheap and idempotent; cache keys compose `(provider_name, model, text)` and remain stable across runs.
+
+```python
+from konwledge.embedding import (
+    EmbeddingService,
+    HashEmbeddingProvider,
+    InMemoryEmbeddingCache,
+    embedding_cache_key,
+)
+
+service = EmbeddingService(
+    HashEmbeddingProvider(dimension=32),
+    cache=InMemoryEmbeddingCache(),
+    batch_size=8,
+)
+vectors = service.embed(["alpha", "beta", "alpha"])
+assert vectors[0] == vectors[2]
+assert embedding_cache_key("hash", "sha256-v1", "alpha") == service.cache_key("alpha")
 ```
 
 ## License
