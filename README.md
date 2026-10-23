@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U07 adds an offline-friendly embedding layer: a provider protocol, a deterministic hash-based test provider, stable cache keys, and a batching + caching service. No network access or API keys are required for tests.
+> Status: pre-alpha. U08 adds a vector index layer on top of the U07 embedding service: a backend-agnostic `VectorIndex` protocol, a pure-Python in-memory implementation with top-K cosine search and metadata filters, an optional LanceDB adapter, and an `IndexingService` that turns `KnowledgeUnit` objects into persisted vectors. Repeated runs produce the same ranking without any network access.
 
 ## Implemented increments
 
@@ -15,8 +15,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U05 | 2026-10-19 | Heading-aware splitting, exact character ranges, section paths, and persisted traceability |
 | U06 | 2026-10-20 | Typer import/list/show CLI, recursive corpus discovery, examples, and automatic local database setup |
 | U07 | 2026-10-21 | Embedding provider protocol, deterministic hash test provider, batching service, and provider/model cache keys |
+| U08 | 2026-10-23 | `VectorIndex` protocol, in-memory top-K search with metadata filters, optional LanceDB adapter, and `IndexingService` for `KnowledgeUnit` vectors |
 
-Each increment builds on the previous branch, so the U07 branch contains the complete U01-U07 implementation.
+Each increment builds on the previous branch, so the U08 branch contains the complete U01-U08 implementation.
 
 ## Why this project
 
@@ -216,6 +217,31 @@ vectors = service.embed(["alpha", "beta", "alpha"])
 assert vectors[0] == vectors[2]
 assert embedding_cache_key("hash", "sha256-v1", "alpha") == service.cache_key("alpha")
 ```
+
+## Vector index
+
+U08 turns embeddings into a searchable store. The `VectorIndex` protocol captures `upsert`, `delete`, `search`, and `rebuild`; the default `InMemoryVectorIndex` ships a dependency-free cosine search with stable id-tiebreak ranking and metadata filters (`{"status": "active"}`, `{"tags": {"in": [...]}}`, `{"status": {"not": [...]}}`). An optional `LanceVectorIndex` adapter targets LanceDB when `pip install lancedb pyarrow` is available; the module imports cleanly without the dependency and raises a clear install hint only when the adapter is instantiated.
+
+`IndexingService` wires the embedding service and the vector index together so you can embed and persist `KnowledgeUnit` objects in one call, run top-K searches by raw text, and rebuild the entire index deterministically:
+
+```python
+from konwledge.embedding import EmbeddingService, HashEmbeddingProvider, InMemoryEmbeddingCache
+from konwledge.indexing import IndexingService, InMemoryVectorIndex
+
+embeddings = EmbeddingService(HashEmbeddingProvider(dimension=32), cache=InMemoryEmbeddingCache())
+indexing = IndexingService(
+    embedding_service=embeddings,
+    vector_index=InMemoryVectorIndex(dimension=32),
+)
+indexing.index_units(units)                       # upsert vectors + traceable payload
+hits = indexing.search("python testing patterns", top_k=5, filters={"status": "active"})
+indexing.remove_units([units[0].id])              # delete a single unit by id
+indexing.rebuild(units)                           # atomically replace the whole index
+```
+
+Repeating `search` with identical input always returns the same ranking: `InMemoryVectorIndex`
+breaks ties on `id` after sorting by descending cosine score, and `IndexingService` reuses the
+embedding cache so vectors never silently drift between runs.
 
 ## License
 
