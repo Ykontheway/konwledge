@@ -69,6 +69,9 @@ class KnowledgeUnitRow(Base):
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    # Nullable so databases created before U09 can be upgraded in place; the
+    # repository treats a missing lineage as "the unit starts its own lineage".
+    lineage_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), index=True)
     document_id: Mapped[UUID] = mapped_column(
         ForeignKey("documents.id", ondelete="RESTRICT"), nullable=False, index=True
     )

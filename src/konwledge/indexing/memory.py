@@ -64,6 +64,9 @@ class InMemoryVectorIndex:
                 removed += 1
         return removed
 
+    def get(self, ids: Sequence[str]) -> dict[str, VectorRecord]:
+        return {record_id: self._store[record_id] for record_id in ids if record_id in self._store}
+
     def search(
         self,
         query: EmbeddingVector,

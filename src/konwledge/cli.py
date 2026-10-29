@@ -98,11 +98,20 @@ def import_command(
         len(item.result.units) if item.result.units_created else 0 for item in report.imported
     )
     for item in report.imported:
-        state = "created" if item.result.ingestion.created else "unchanged"
-        typer.echo(
-            f"{state}: {item.path} | document={item.result.ingestion.document.id} "
-            f"| units={len(item.result.units)}"
+        result = item.result
+        if result.diff is not None:
+            state = "updated"
+        elif result.ingestion.created:
+            state = "created"
+        else:
+            state = "unchanged"
+        line = (
+            f"{state}: {item.path} | document={result.ingestion.document.id} "
+            f"| units={len(result.units)}"
         )
+        if result.diff is not None:
+            line += f" | changes={result.diff.summary()} | re-embed={len(result.diff.affected)}"
+        typer.echo(line)
     typer.echo(
         f"Imported {len(report.imported)} file(s): {created_documents} document(s) and "
         f"{created_units} unit(s) created; {len(report.skipped)} unsupported file(s) skipped."
@@ -158,6 +167,37 @@ def show_command(
     typer.echo(f"range: [{unit.start_char}, {unit.end_char})")
     typer.echo("text:")
     typer.echo(unit.text, nl=not unit.text.endswith("\n"))
+
+
+@app.command("history")
+def history_command(
+    unit_id: Annotated[UUID, typer.Argument(help="Any knowledge unit UUID of the lineage.")],
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show the revision chain of a knowledge unit across document versions."""
+
+    try:
+        history = _open_library(database).unit_history(unit_id)
+    except KnowledgeUnitNotFoundError as error:
+        _fail(str(error))
+
+    typer.echo(f"lineage: {history.lineage_id}")
+    typer.echo(f"versions: {len(history.versions)}")
+    for version in history.versions:
+        marker = "*" if version.id == history.unit.id else " "
+        section = " / ".join(version.section_path) or "<root>"
+        typer.echo(
+            f" {marker} unit {version.id} document={version.document_id} "
+            f"section={section} hash={version.content_hash[:12]}"
+        )
+    typer.echo(f"revisions: {len(history.revisions)}")
+    for revision in history.revisions:
+        change = revision.payload.get("change", revision.change_type.value)
+        target = revision.payload.get("unit_id") or revision.payload.get("previous_unit_id")
+        typer.echo(
+            f"  rev {revision.revision} {revision.change_type.value} ({change}) "
+            f"unit={target} at {revision.created_at.isoformat()}"
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

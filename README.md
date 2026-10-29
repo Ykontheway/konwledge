@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U08 adds a vector index layer on top of the U07 embedding service: a backend-agnostic `VectorIndex` protocol, a pure-Python in-memory implementation with top-K cosine search and metadata filters, an optional LanceDB adapter, and an `IndexingService` that turns `KnowledgeUnit` objects into persisted vectors. Repeated runs produce the same ranking without any network access.
+> Status: pre-alpha. U09 makes updates incremental: when a file changes, its new knowledge units are diffed against the previous version, matched units keep a stable `lineage_id`, every real change is appended to a per-lineage revision chain, and `IndexingService.apply_diff` re-embeds only added or modified units while reusing stored vectors for everything else.
 
 ## Implemented increments
 
@@ -16,8 +16,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U06 | 2026-10-20 | Typer import/list/show CLI, recursive corpus discovery, examples, and automatic local database setup |
 | U07 | 2026-10-21 | Embedding provider protocol, deterministic hash test provider, batching service, and provider/model cache keys |
 | U08 | 2026-10-23 | `VectorIndex` protocol, in-memory top-K search with metadata filters, optional LanceDB adapter, and `IndexingService` for `KnowledgeUnit` vectors |
+| U09 | 2026-10-29 | Unit-level document diff, stable lineages, append-only revision chains, partial index rebuilds, `knowledge history`, and U08 LanceDB hardening |
 
-Each increment builds on the previous branch, so the U08 branch contains the complete U01-U08 implementation.
+Each increment builds on the previous branch, so the U09 branch contains the complete U01-U09 implementation.
 
 ## Why this project
 
@@ -69,12 +70,14 @@ you want another explicit location. From an empty checkout, the shortest end-to-
 uv run knowledge import examples --database .konwledge/demo.db
 uv run knowledge list --database .konwledge/demo.db
 uv run knowledge show <unit-id-from-list> --database .konwledge/demo.db
+uv run knowledge history <unit-id-from-list> --database .konwledge/demo.db
 ```
 
 `import` accepts one `.md`, `.markdown`, or `.txt` file, or recursively discovers those formats in
 a directory. Files are processed in stable relative-path order; unrelated file formats in a
 directory are skipped and summarized. Reimporting unchanged content is idempotent, while changed
-content creates a new immutable document version and new traceable units.
+content creates a new immutable document version whose units are diffed against the previous
+version (see [Incremental updates](#incremental-updates)).
 
 The legacy `konwledge` executable remains an alias for compatibility. Local SQLite databases are
 runtime data: keep them under `.konwledge/` or use a `*.db`/`*.sqlite` name, and do not commit them.
@@ -91,6 +94,13 @@ uv run mypy src tests
 uv run pytest --cov=konwledge --cov-report=term-missing
 ```
 
+The optional LanceDB adapter has its own CI job. Run it locally with:
+
+```bash
+uv sync --dev --extra lancedb
+uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
+```
+
 ## Repository layout
 
 ```text
@@ -104,6 +114,12 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 │   │   ├── __init__.py
 │   │   ├── providers.py
 │   │   └── service.py
+│   ├── indexing/
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── lance.py
+│   │   ├── memory.py
+│   │   └── service.py
 │   ├── ingestion/
 │   │   ├── __init__.py
 │   │   ├── loaders.py
@@ -111,6 +127,10 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 │   │   ├── pipeline.py
 │   │   ├── service.py
 │   │   └── splitting.py
+│   ├── lifecycle/
+│   │   ├── __init__.py
+│   │   ├── diff.py
+│   │   └── revisions.py
 │   ├── storage/
 │   │   ├── __init__.py
 │   │   ├── database.py
@@ -130,7 +150,7 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 └── pyproject.toml
 ```
 
-The remaining modules will be added only when they gain executable behavior: `lifecycle`, `retrieval`, `evaluation`, `providers`, and `api`.
+The remaining modules will be added only when they gain executable behavior: `retrieval`, `evaluation`, `providers`, and `api`.
 
 ## Domain models
 
@@ -198,7 +218,7 @@ for unit in result.units:
 
 U07 introduces an offline-friendly embedding layer. The `EmbeddingProvider` protocol defines the minimal surface a backend must expose (`name`, `model`, `dimension`, and `embed`). `HashEmbeddingProvider` ships as a deterministic SHA-256 provider so tests never require network access or API keys.
 
-`EmbeddingService` adds batching, dimension checks, and a provider/model-aware cache key. The default `InMemoryEmbeddingCache` keeps repeated calls cheap and idempotent; cache keys compose `(provider_name, model, text)` and remain stable across runs.
+`EmbeddingService` adds batching, dimension checks, and a provider/model-aware cache key. Caching is opt-in: pass an `InMemoryEmbeddingCache` (or any object with `get`/`set`) to keep repeated calls cheap and idempotent; cache keys compose `(provider_name, model, text)` and remain stable across runs.
 
 ```python
 from konwledge.embedding import (
@@ -220,7 +240,7 @@ assert embedding_cache_key("hash", "sha256-v1", "alpha") == service.cache_key("a
 
 ## Vector index
 
-U08 turns embeddings into a searchable store. The `VectorIndex` protocol captures `upsert`, `delete`, `search`, and `rebuild`; the default `InMemoryVectorIndex` ships a dependency-free cosine search with stable id-tiebreak ranking and metadata filters (`{"status": "active"}`, `{"tags": {"in": [...]}}`, `{"status": {"not": [...]}}`). An optional `LanceVectorIndex` adapter targets LanceDB when `pip install lancedb pyarrow` is available; the module imports cleanly without the dependency and raises a clear install hint only when the adapter is instantiated.
+U08 turns embeddings into a searchable store. The `VectorIndex` protocol captures `upsert`, `delete`, `get`, `search`, and `rebuild`; the default `InMemoryVectorIndex` ships a dependency-free cosine search with stable id-tiebreak ranking and metadata filters (`{"status": "active"}`, `{"tags": {"in": [...]}}`, `{"status": {"not": [...]}}`). An optional `LanceVectorIndex` adapter targets LanceDB when installed with `uv sync --extra lancedb` (or `pip install "konwledge[lancedb]"`); the module imports cleanly without the dependency and raises a clear install hint only when the adapter is instantiated. The adapter uses an explicit Arrow schema, so empty rebuilds keep the vector dimension, filtered searches scan every row instead of a fixed oversampling window, and reopening a table with another dimension fails with a clear error.
 
 `IndexingService` wires the embedding service and the vector index together so you can embed and persist `KnowledgeUnit` objects in one call, run top-K searches by raw text, and rebuild the entire index deterministically:
 
@@ -233,15 +253,65 @@ indexing = IndexingService(
     embedding_service=embeddings,
     vector_index=InMemoryVectorIndex(dimension=32),
 )
-indexing.index_units(units)                       # upsert vectors + traceable payload
+indexing.index_units(units)  # upsert vectors + traceable payload
 hits = indexing.search("python testing patterns", top_k=5, filters={"status": "active"})
-indexing.remove_units([units[0].id])              # delete a single unit by id
-indexing.rebuild(units)                           # atomically replace the whole index
+indexing.remove_units([units[0].id])  # delete a single unit by id
+indexing.rebuild(units)  # atomically replace the whole index
 ```
 
 Repeating `search` with identical input always returns the same ranking: `InMemoryVectorIndex`
-breaks ties on `id` after sorting by descending cosine score, and `IndexingService` reuses the
-embedding cache so vectors never silently drift between runs.
+breaks ties on `id` after sorting by descending cosine score, and the hash provider is
+deterministic, so vectors never silently drift between runs.
+
+## Incremental updates
+
+U09 answers "what actually changed?" when a file is imported again with new content. Each new
+document version is compared with the previous version of the same source at the knowledge-unit
+level:
+
+| Change | Rule | Re-embedded? |
+| --- | --- | --- |
+| `unchanged` | identical text in the same section (its position may shift) | no, vector reused |
+| `moved` | identical text in a different section | no, vector reused |
+| `modified` | similar text (≥ 0.5 ratio) or a rewrite inside the same named section | yes |
+| `added` | no matching unit in the previous version | yes |
+| `removed` | previous unit with no match in the new version | vector deleted |
+
+Every unit has a `lineage_id` that stays stable across versions, so "the Usage paragraph" can be
+followed through edits even though each immutable document version stores new unit ids. Lineage
+changes are written as append-only `Revision` records (`create`, `update`, `delete`) in the same
+transaction as the new units; unchanged units add no history. Databases created before U09 gain
+the nullable `lineage_id` column automatically, and legacy rows start their own lineage.
+
+```text
+$ knowledge import guide.md
+updated: guide.md | document=… | units=4 | changes=+1 ~1 >0 =2 -0 | re-embed=2
+
+$ knowledge history <unit-id>
+lineage: 9581…
+versions: 2
+revisions: 2
+  rev 1 create (added) unit=9581… at 2026-10-29T03:25:26+00:00
+  rev 2 update (modified) unit=ea17… at 2026-10-29T03:25:27+00:00
+```
+
+`IndexingService.apply_diff` turns the diff into a partial index rebuild. It embeds only `added`
+and `modified` units, copies stored vectors for `unchanged` and `moved` units (falling back to
+embedding if a vector is missing), refreshes their payload with the new `document_id`,
+`lineage_id`, and `content_hash`, and deletes the previous version's ids:
+
+```python
+service = TraceableIngestionService(ingestion, KnowledgeUnitService(session_factory))
+result = service.ingest(source_id)
+if result.diff is not None:
+    report = indexing.apply_diff(result.diff)
+    print(result.diff.summary(), report.embedded, report.reused, report.deleted)
+```
+
+Tests verify the acceptance criterion directly: with no embedding cache configured, the provider
+receives exactly the texts of the changed units. Unit statuses (`stale`, `superseded`, `deleted`)
+and as-of queries are intentionally left to U10; re-importing content identical to an older
+version currently reuses that old version without re-diffing.
 
 ## License
 

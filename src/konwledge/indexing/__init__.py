@@ -29,10 +29,15 @@ from konwledge.indexing.base import (
 )
 from konwledge.indexing.lance import LanceVectorIndex
 from konwledge.indexing.memory import InMemoryVectorIndex
-from konwledge.indexing.service import IndexingService, build_vector_record
+from konwledge.indexing.service import (
+    IncrementalIndexReport,
+    IndexingService,
+    build_vector_record,
+)
 
 __all__ = [
     "InMemoryVectorIndex",
+    "IncrementalIndexReport",
     "IndexingService",
     "LanceVectorIndex",
     "MetadataFilter",

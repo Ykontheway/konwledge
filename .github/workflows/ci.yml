@@ -41,3 +41,23 @@ jobs:
 
       - name: Test
         run: uv run pytest --cov=konwledge --cov-report=term-missing
+
+  lancedb:
+    name: Optional LanceDB adapter
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies with the lancedb extra
+        run: uv sync --locked --dev --extra lancedb
+
+      - name: Test LanceDB adapter
+        run: uv run pytest tests/test_indexing.py -k lance

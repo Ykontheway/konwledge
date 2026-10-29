@@ -85,6 +85,9 @@ class VectorIndex(Protocol):
     def delete(self, ids: Sequence[str]) -> int:
         """Delete records with the given ids; return the number removed."""
 
+    def get(self, ids: Sequence[str]) -> dict[str, VectorRecord]:
+        """Return stored records keyed by id; unknown ids are omitted."""
+
     def search(
         self,
         query: EmbeddingVector,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Self
@@ -63,6 +64,9 @@ class RevisionChangeType(StrEnum):
     DELETE = "delete"
 
 
+_UNSET_LINEAGE = UUID(int=0)
+
+
 def _ensure_aware(value: datetime, field_name: str) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{field_name} must include timezone information")
@@ -119,11 +123,19 @@ class Document(KonwledgeModel):
 
 
 class KnowledgeUnit(KonwledgeModel):
-    """A traceable text unit that can be indexed and retrieved independently."""
+    """A traceable text unit that can be indexed and retrieved independently.
+
+    ``id`` identifies this unit inside one immutable document version, while
+    ``lineage_id`` stays stable when the same piece of knowledge is carried into
+    later versions. A unit without an explicit lineage starts its own lineage.
+    """
 
     model_config = ConfigDict(str_strip_whitespace=False)
 
     id: UUID
+    # The placeholder is never observable: ``default_lineage_to_id`` replaces a
+    # missing or ``None`` lineage with ``id`` before field validation runs.
+    lineage_id: UUID = Field(default=_UNSET_LINEAGE)
     document_id: UUID
     ordinal: int = Field(ge=0)
     text: str = Field(min_length=1)
@@ -134,6 +146,19 @@ class KnowledgeUnit(KonwledgeModel):
     status: KnowledgeUnitStatus = KnowledgeUnitStatus.ACTIVE
     tags: set[str] = Field(default_factory=set)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_lineage_to_id(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("lineage_id") is None and "id" in data:
+            return {**data, "lineage_id": data["id"]}
+        return data
+
+    @property
+    def content_hash(self) -> str:
+        """SHA-256 of the exact unit text, used to detect unchanged knowledge."""
+
+        return hashlib.sha256(self.text.encode("utf-8")).hexdigest()
 
     @field_validator("text")
     @classmethod
@@ -172,6 +197,8 @@ class KnowledgeUnit(KonwledgeModel):
     def validate_range(self) -> Self:
         if self.end_char <= self.start_char:
             raise ValueError("end_char must be greater than start_char")
+        if self.lineage_id == _UNSET_LINEAGE:
+            raise ValueError("lineage_id must not be the nil UUID")
         return self
 
 
