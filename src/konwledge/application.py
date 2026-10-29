@@ -10,7 +10,14 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
 
-from konwledge.domain import Document, KnowledgeUnit, Source, SourceKind
+from konwledge.domain import (
+    Document,
+    KnowledgeUnit,
+    Revision,
+    RevisionEntityType,
+    Source,
+    SourceKind,
+)
 from konwledge.ingestion import (
     FileIngestionService,
     KnowledgeUnitService,
@@ -73,6 +80,16 @@ class KnowledgeUnitDetail:
     unit: KnowledgeUnit
     document: Document
     source: Source
+
+
+@dataclass(frozen=True, slots=True)
+class UnitHistory:
+    """All stored versions of one knowledge lineage and its revision chain."""
+
+    unit: KnowledgeUnit
+    lineage_id: UUID
+    versions: tuple[KnowledgeUnit, ...]
+    revisions: tuple[Revision, ...]
 
 
 def discover_import_files(target: Path) -> FileDiscovery:
@@ -170,6 +187,36 @@ class KnowledgeLibrary:
             if source is None:
                 raise RuntimeError(f"document {document.id} references a missing source")
             return KnowledgeUnitDetail(unit=unit, document=document, source=source)
+
+    def unit_history(self, unit_id: UUID) -> UnitHistory:
+        """Return every stored version and the revision chain of a unit's lineage."""
+
+        with UnitOfWork(self._session_factory) as uow:
+            unit = uow.knowledge_units.get(unit_id)
+            if unit is None:
+                raise KnowledgeUnitNotFoundError(f"knowledge unit {unit_id} was not found")
+            versions = tuple(uow.knowledge_units.list_by_lineage(unit.lineage_id))
+            ingested_at: dict[UUID, datetime] = {}
+            for version in versions:
+                document = uow.documents.get(version.document_id)
+                if document is None:
+                    raise RuntimeError(f"knowledge unit {version.id} references a missing document")
+                ingested_at[version.document_id] = document.ingested_at
+            versions = tuple(
+                sorted(
+                    versions,
+                    key=lambda version: (ingested_at[version.document_id], str(version.id)),
+                )
+            )
+            revisions = tuple(
+                uow.revisions.list_for(RevisionEntityType.KNOWLEDGE_UNIT, unit.lineage_id)
+            )
+            return UnitHistory(
+                unit=unit,
+                lineage_id=unit.lineage_id,
+                versions=versions,
+                revisions=revisions,
+            )
 
     def _import_file(self, path: Path) -> ImportedFile:
         source = self._ensure_file_source(path)

@@ -7,10 +7,18 @@ from collections.abc import Sequence
 from typing import Generic, Protocol, TypeVar
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from konwledge.domain import Citation, Document, KnowledgeUnit, Revision, Source, SourceKind
+from konwledge.domain import (
+    Citation,
+    Document,
+    KnowledgeUnit,
+    Revision,
+    RevisionEntityType,
+    Source,
+    SourceKind,
+)
 from konwledge.storage.tables import (
     CitationRow,
     DocumentRow,
@@ -156,6 +164,15 @@ class DocumentRepository(SqlAlchemyRepository[Document, DocumentRow]):
         )
         return None if row is None else self._to_entity(row)
 
+    def list_by_source(self, source_id: UUID) -> Sequence[Document]:
+        """Return all document versions of one source, oldest first."""
+
+        rows = self._session.scalars(
+            select(DocumentRow).where(DocumentRow.source_id == source_id)
+        ).all()
+        documents = [self._to_entity(row) for row in rows]
+        return sorted(documents, key=lambda document: (document.ingested_at, str(document.id)))
+
     def _entity_id(self, entity: Document) -> UUID:
         return entity.id
 
@@ -207,9 +224,26 @@ class KnowledgeUnitRepository(SqlAlchemyRepository[KnowledgeUnit, KnowledgeUnitR
     def _entity_id(self, entity: KnowledgeUnit) -> UUID:
         return entity.id
 
+    def list_by_lineage(self, lineage_id: UUID) -> Sequence[KnowledgeUnit]:
+        """Return every stored version of one lineage (legacy rows count as their own)."""
+
+        rows = self._session.scalars(
+            select(KnowledgeUnitRow).where(
+                or_(
+                    KnowledgeUnitRow.lineage_id == lineage_id,
+                    and_(
+                        KnowledgeUnitRow.lineage_id.is_(None),
+                        KnowledgeUnitRow.id == lineage_id,
+                    ),
+                )
+            )
+        ).all()
+        return [self._to_entity(row) for row in rows]
+
     def _to_row(self, entity: KnowledgeUnit) -> KnowledgeUnitRow:
         return KnowledgeUnitRow(
             id=entity.id,
+            lineage_id=entity.lineage_id,
             document_id=entity.document_id,
             ordinal=entity.ordinal,
             text=entity.text,
@@ -226,6 +260,7 @@ class KnowledgeUnitRepository(SqlAlchemyRepository[KnowledgeUnit, KnowledgeUnitR
         return KnowledgeUnit.model_validate(
             {
                 "id": row.id,
+                "lineage_id": row.lineage_id,
                 "document_id": row.document_id,
                 "ordinal": row.ordinal,
                 "text": row.text,
@@ -240,6 +275,7 @@ class KnowledgeUnitRepository(SqlAlchemyRepository[KnowledgeUnit, KnowledgeUnitR
         )
 
     def _apply(self, row: KnowledgeUnitRow, entity: KnowledgeUnit) -> None:
+        row.lineage_id = entity.lineage_id
         row.document_id = entity.document_id
         row.ordinal = entity.ordinal
         row.text = entity.text
@@ -261,6 +297,44 @@ class RevisionRepository(SqlAlchemyRepository[Revision, RevisionRow]):
 
     def delete(self, entity_id: UUID) -> bool:
         raise ImmutableEntityError("revision history is append-only")
+
+    def list_for(self, entity_type: RevisionEntityType, entity_id: UUID) -> Sequence[Revision]:
+        """Return the revision chain of one entity in ascending revision order."""
+
+        rows = self._session.scalars(
+            select(RevisionRow)
+            .where(
+                RevisionRow.entity_type == entity_type.value,
+                RevisionRow.entity_id == entity_id,
+            )
+            .order_by(RevisionRow.revision)
+        ).all()
+        return [self._to_entity(row) for row in rows]
+
+    def latest_for(self, entity_type: RevisionEntityType, entity_id: UUID) -> Revision | None:
+        """Return the newest revision of one entity, if any."""
+
+        row = self._session.scalar(
+            select(RevisionRow)
+            .where(
+                RevisionRow.entity_type == entity_type.value,
+                RevisionRow.entity_id == entity_id,
+            )
+            .order_by(RevisionRow.revision.desc())
+            .limit(1)
+        )
+        return None if row is None else self._to_entity(row)
+
+    def next_number(self, entity_type: RevisionEntityType, entity_id: UUID) -> int:
+        """Return the revision number the next change of one entity should use."""
+
+        current = self._session.scalar(
+            select(func.max(RevisionRow.revision)).where(
+                RevisionRow.entity_type == entity_type.value,
+                RevisionRow.entity_id == entity_id,
+            )
+        )
+        return 1 if current is None else int(current) + 1
 
     def _entity_id(self, entity: Revision) -> UUID:
         return entity.id

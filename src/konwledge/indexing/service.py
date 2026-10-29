@@ -10,22 +10,28 @@ with reusable metadata:
   (``document_id``, ``ordinal``, ``status``, ``tags``, ``section_path`` and
   any user-supplied extras) and persisted via :class:`VectorIndex.upsert`;
 * higher-level helpers expose top-K search by raw text and full-index rebuilds
-  so pipelines can keep repeated runs deterministic.
+  so pipelines can keep repeated runs deterministic;
+* :meth:`IndexingService.apply_diff` performs a *partial* rebuild after a
+  document changes: only added or modified units are embedded, unchanged and
+  moved units reuse their stored vectors, and vectors of the previous version
+  are removed.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from konwledge.domain.models import KnowledgeUnit
-from konwledge.embedding import EmbeddingService
+from konwledge.embedding import EmbeddingService, EmbeddingVector
 from konwledge.indexing.base import (
     MetadataFilter,
     SearchHit,
     VectorIndex,
     VectorRecord,
 )
+from konwledge.lifecycle import DocumentDiff
 
 
 def build_vector_record(
@@ -38,6 +44,8 @@ def build_vector_record(
 
     payload: dict[str, Any] = {
         "document_id": str(unit.document_id),
+        "lineage_id": str(unit.lineage_id),
+        "content_hash": unit.content_hash,
         "ordinal": unit.ordinal,
         "status": unit.status.value,
         "heading": unit.heading,
@@ -51,6 +59,19 @@ def build_vector_record(
     if extra_payload:
         payload.update(extra_payload)
     return VectorRecord(id=str(unit.id), vector=vector, payload=payload)
+
+
+@dataclass(frozen=True, slots=True)
+class IncrementalIndexReport:
+    """What a partial rebuild did, so callers can prove only changes were recomputed."""
+
+    embedded: tuple[str, ...]
+    reused: tuple[str, ...]
+    deleted: int
+
+    @property
+    def upserted(self) -> int:
+        return len(self.embedded) + len(self.reused)
 
 
 class IndexingService:
@@ -115,6 +136,64 @@ class IndexingService:
         ]
         self._vector_index.rebuild(records)
         return records
+
+    def apply_diff(
+        self,
+        diff: DocumentDiff,
+        *,
+        extra_payload: Mapping[str, Any] | None = None,
+    ) -> IncrementalIndexReport:
+        """Bring the index from the previous document version to the next one.
+
+        * ``added``/``modified`` units are embedded;
+        * ``unchanged``/``moved`` units copy the vector stored for their old
+          unit id (falling back to embedding if it is missing from the index),
+          while their payload is refreshed with the new position and ids;
+        * every old unit id is deleted, so the index only serves the latest
+          version of the document.
+        """
+
+        reusable_ids = [
+            str(change.old.id)
+            for change in diff.changes
+            if change.old is not None and change.new is not None and not change.needs_embedding
+        ]
+        stored = self._vector_index.get(reusable_ids) if reusable_ids else {}
+
+        to_embed: list[KnowledgeUnit] = []
+        reused: dict[str, EmbeddingVector] = {}
+        for change in diff.changes:
+            if change.new is None:
+                continue
+            record = None if change.old is None else stored.get(str(change.old.id))
+            if change.needs_embedding or record is None:
+                to_embed.append(change.new)
+            else:
+                reused[str(change.new.id)] = record.vector
+
+        vectors = self._embedding_service.embed([unit.text for unit in to_embed])
+        embedded = {str(unit.id): vector for unit, vector in zip(to_embed, vectors, strict=True)}
+
+        records = []
+        for unit in diff.new_units:
+            unit_id = str(unit.id)
+            vector = embedded[unit_id] if unit_id in embedded else reused[unit_id]
+            records.append(build_vector_record(unit, vector, extra_payload=extra_payload))
+
+        new_ids = {record.id for record in records}
+        stale_ids = [
+            str(change.old.id)
+            for change in diff.changes
+            if change.old is not None and str(change.old.id) not in new_ids
+        ]
+        deleted = self._vector_index.delete(stale_ids) if stale_ids else 0
+        if records:
+            self._vector_index.upsert(records)
+        return IncrementalIndexReport(
+            embedded=tuple(embedded),
+            reused=tuple(reused),
+            deleted=deleted,
+        )
 
     def remove_units(self, unit_ids: Iterable[Any]) -> int:
         """Delete the vectors associated with ``unit_ids``."""
