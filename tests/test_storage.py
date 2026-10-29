@@ -87,9 +87,11 @@ def make_unit() -> KnowledgeUnit:
         text="Knowledge remains traceable to its source.",
         start_char=0,
         end_char=42,
+        heading="Why",
+        section_path=("Overview", "Why"),
         status=KnowledgeUnitStatus.ACTIVE,
         tags={"rag", "traceability"},
-        metadata={"heading": "Why"},
+        metadata={"language": "en"},
     )
 
 

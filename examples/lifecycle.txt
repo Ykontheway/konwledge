@@ -1,0 +1,3 @@
+Importing the same normalized content is idempotent.
+
+Changing a file creates a new document version and a new set of knowledge units.

@@ -26,6 +26,7 @@ class Base(DeclarativeBase):
 
 class SourceRow(Base):
     __tablename__ = "sources"
+    __table_args__ = (UniqueConstraint("kind", "uri"),)
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -75,6 +76,8 @@ class KnowledgeUnitRow(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     start_char: Mapped[int] = mapped_column(Integer, nullable=False)
     end_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    heading: Mapped[str | None] = mapped_column(Text)
+    section_path: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
