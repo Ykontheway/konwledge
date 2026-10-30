@@ -15,10 +15,17 @@ from konwledge.ingestion.splitting import TraceableTextSplitter
 from konwledge.lifecycle import (
     DEFAULT_SIMILARITY_THRESHOLD,
     DocumentDiff,
+    backfill_publications,
+    diff_by_lineage,
     diff_units,
+    head_at,
     initial_revisions,
+    load_timeline,
+    materialize_statuses,
+    publish_document,
     revisions_for_diff,
 )
+from konwledge.lifecycle.status import first_published_at
 from konwledge.storage import SessionFactory, UnitOfWork
 
 IdFactory = Callable[[], UUID]
@@ -29,15 +36,17 @@ Clock = Callable[[], datetime]
 class SplittingResult:
     """Persisted units, whether this call created them, and the version diff.
 
-    ``diff`` is set only when this call created the units of a document that
-    replaces an earlier version of the same source; it tells the indexing layer
-    exactly which units must be re-embedded.
+    ``diff`` is set whenever this call changed the head version of a source
+    that already had one: either a brand-new document version or a return to
+    an older one (``reverted``). It tells the indexing layer exactly which
+    units must be re-embedded.
     """
 
     units: tuple[KnowledgeUnit, ...]
     created: bool
     diff: DocumentDiff | None = None
     previous_document_id: UUID | None = None
+    reverted: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,15 +58,22 @@ class TraceableIngestionResult:
     units_created: bool
     diff: DocumentDiff | None = None
     previous_document_id: UUID | None = None
+    reverted: bool = False
 
 
 class KnowledgeUnitService:
-    """Split and persist units once for each immutable document version.
+    """Split, persist, and publish each immutable document version.
 
-    When a source already has an older document version, the new units are
-    diffed against it: matched units inherit the old ``lineage_id`` and every
-    real change is appended to the lineage's revision chain in the same
-    transaction as the units themselves.
+    Every call ends with the ingested document as its source's *head* version:
+
+    * a new version is split and diffed against the current head, so matched
+      units inherit the old ``lineage_id``;
+    * a version that was published before (a revert to older content) reuses
+      its stored units and is diffed against the head by lineage;
+    * the head itself is a no-op, which keeps re-imports idempotent.
+
+    Unit revisions, the source ``published`` revision, and the cached unit
+    statuses are written in one transaction.
     """
 
     def __init__(
@@ -78,50 +94,84 @@ class KnowledgeUnitService:
     def ensure_units(self, document: Document, content: str) -> SplittingResult:
         with UnitOfWork(self._session_factory) as uow:
             existing = tuple(uow.knowledge_units.list_by_document(document.id))
-            if existing:
+            # Pre-U10 databases only have an implicit timeline; materialize it
+            # first, leaving out a document that has not been split yet.
+            unsplit = None if existing else document.id
+            backfill_publications(
+                uow,
+                document.source_id,
+                exclude=unsplit,
+                id_factory=self._revision_id_factory,
+            )
+            timeline = load_timeline(uow, document.source_id, unpublished=unsplit)
+            head = head_at(timeline)
+            if head is not None and head.document_id == document.id:
+                uow.commit()  # keep a backfill, if one was needed
                 return SplittingResult(units=existing, created=False)
 
-            split = self._splitter.split(document, content)
-            previous = _previous_version(uow, document)
+            now = self._clock()
+            previous_id = None if head is None else head.document_id
+            previous_units = (
+                () if previous_id is None else uow.knowledge_units.list_by_document(previous_id)
+            )
+            revisit = bool(existing) or first_published_at(timeline, document.id) is not None
             diff: DocumentDiff | None = None
-            if previous is None:
-                units = split
+            units: tuple[KnowledgeUnit, ...] = ()
+            if revisit:
+                diff = diff_by_lineage(previous_units, existing)
+                revisions = revisions_for_diff(
+                    diff,
+                    document=document,
+                    previous_document_id=previous_id or document.id,
+                    id_factory=self._revision_id_factory,
+                    clock=lambda: now,
+                    next_number=_revision_counter(uow),
+                    extra_payload={"reverted": True},
+                )
+            elif previous_id is None:
+                units = self._splitter.split(document, content)
                 revisions = initial_revisions(
                     units,
                     document=document,
                     id_factory=self._revision_id_factory,
-                    clock=self._clock,
+                    clock=lambda: now,
                     next_number=_revision_counter(uow),
                 )
             else:
-                previous_units = uow.knowledge_units.list_by_document(previous.id)
                 diff = diff_units(
                     previous_units,
-                    split,
+                    self._splitter.split(document, content),
                     similarity_threshold=self._similarity_threshold,
                 ).with_inherited_lineage()
                 units = diff.new_units
                 revisions = revisions_for_diff(
                     diff,
                     document=document,
-                    previous_document_id=previous.id,
+                    previous_document_id=previous_id,
                     id_factory=self._revision_id_factory,
-                    clock=self._clock,
+                    clock=lambda: now,
                     next_number=_revision_counter(uow),
                 )
                 if not units:
-                    # An emptied document has no units to make the call
-                    # idempotent, so skip lineages already closed by it.
+                    # Legacy databases may already hold the deletes of an
+                    # emptied document; do not record them twice.
                     revisions = _unrecorded(uow, revisions, document.id)
-
-            if not units and not revisions:
-                return SplittingResult(units=(), created=False)
 
             try:
                 for unit in units:
                     uow.knowledge_units.add(unit)
                 for revision in revisions:
                     uow.revisions.add(revision)
+                publish_document(
+                    uow,
+                    document,
+                    previous_document_id=previous_id,
+                    reverted=revisit,
+                    id_factory=self._revision_id_factory,
+                    created_at=now,
+                )
+                materialize_statuses(uow, document.source_id)
+                persisted = tuple(uow.knowledge_units.list_by_document(document.id))
                 uow.commit()
             except IntegrityError:
                 uow.rollback()
@@ -131,22 +181,12 @@ class KnowledgeUnitService:
                 return SplittingResult(units=existing, created=False)
 
             return SplittingResult(
-                units=units,
+                units=persisted,
                 created=bool(units),
-                diff=diff,
-                previous_document_id=None if previous is None else previous.id,
+                diff=None if diff is None else diff.with_new_units(persisted),
+                previous_document_id=previous_id,
+                reverted=revisit,
             )
-
-
-def _previous_version(uow: UnitOfWork, document: Document) -> Document | None:
-    """Return the newest other version of the same source ingested before ``document``."""
-
-    candidates = [
-        candidate
-        for candidate in uow.documents.list_by_source(document.source_id)
-        if candidate.id != document.id and candidate.ingested_at <= document.ingested_at
-    ]
-    return candidates[-1] if candidates else None
 
 
 def _revision_counter(uow: UnitOfWork) -> Callable[[UUID], int]:
@@ -197,4 +237,5 @@ class TraceableIngestionService:
             units_created=splitting.created,
             diff=splitting.diff,
             previous_document_id=splitting.previous_document_id,
+            reverted=splitting.reverted,
         )

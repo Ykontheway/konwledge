@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from konwledge.domain import (
     Document,
     KnowledgeUnit,
+    KnowledgeUnitStatus,
     Revision,
     RevisionEntityType,
     Source,
@@ -24,7 +25,27 @@ from konwledge.ingestion import (
     TraceableIngestionResult,
     TraceableIngestionService,
 )
+from konwledge.lifecycle import (
+    KnowledgeSnapshot,
+    KnowledgeUnitNotFoundError,
+    LifecycleService,
+    UnitState,
+)
 from konwledge.storage import SessionFactory, UnitOfWork
+
+__all__ = [
+    "SUPPORTED_SUFFIXES",
+    "DocumentSummary",
+    "FileDiscovery",
+    "ImportPathError",
+    "ImportReport",
+    "ImportedFile",
+    "KnowledgeLibrary",
+    "KnowledgeUnitDetail",
+    "KnowledgeUnitNotFoundError",
+    "UnitHistory",
+    "discover_import_files",
+]
 
 SUPPORTED_SUFFIXES = frozenset({".md", ".markdown", ".txt"})
 
@@ -34,10 +55,6 @@ Clock = Callable[[], datetime]
 
 class ImportPathError(ValueError):
     """Raised when an import target cannot produce supported files."""
-
-
-class KnowledgeUnitNotFoundError(LookupError):
-    """Raised when a requested knowledge unit is not stored."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,11 +83,17 @@ class ImportReport:
 
 @dataclass(frozen=True, slots=True)
 class DocumentSummary:
-    """A document, its source, and its traceable units."""
+    """A document, its source, its traceable units, and their current statuses.
+
+    ``is_head`` marks the version currently published for the source;
+    ``statuses`` is empty for a version that was never published.
+    """
 
     document: Document
     source: Source
     units: tuple[KnowledgeUnit, ...]
+    is_head: bool = False
+    statuses: Mapping[UUID, KnowledgeUnitStatus] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +113,7 @@ class UnitHistory:
     lineage_id: UUID
     versions: tuple[KnowledgeUnit, ...]
     revisions: tuple[Revision, ...]
+    statuses: Mapping[UUID, KnowledgeUnitStatus] = field(default_factory=dict)
 
 
 def discover_import_files(target: Path) -> FileDiscovery:
@@ -125,6 +149,14 @@ def _is_supported(path: Path) -> bool:
     return path.suffix.lower() in SUPPORTED_SUFFIXES
 
 
+def _statuses_by_unit(snapshot: KnowledgeSnapshot) -> dict[UUID, KnowledgeUnitStatus]:
+    return {
+        state.unit.id: state.status
+        for source in snapshot.sources
+        for state in (*source.units, *source.retired)
+    }
+
+
 class KnowledgeLibrary:
     """Import files and query persisted knowledge through UnitOfWork boundaries."""
 
@@ -143,6 +175,13 @@ class KnowledgeLibrary:
             FileIngestionService(session_factory),
             KnowledgeUnitService(session_factory),
         )
+        self._lifecycle = LifecycleService(session_factory, id_factory=id_factory, clock=clock)
+
+    @property
+    def lifecycle(self) -> LifecycleService:
+        """Status queries, as-of snapshots, and explicit stale/refresh marks."""
+
+        return self._lifecycle
 
     def import_path(self, target: Path) -> ImportReport:
         """Import every supported target file in stable order."""
@@ -154,6 +193,9 @@ class KnowledgeLibrary:
     def list_documents(self) -> tuple[DocumentSummary, ...]:
         """Return all document versions with source and unit details in stable order."""
 
+        current = self._lifecycle.snapshot(include_retired=True)
+        heads = {snapshot.head.id for snapshot in current.sources if snapshot.head is not None}
+        statuses = _statuses_by_unit(current)
         with UnitOfWork(self._session_factory) as uow:
             documents = sorted(
                 uow.documents.list(),
@@ -170,8 +212,30 @@ class KnowledgeLibrary:
                 if source is None:
                     raise RuntimeError(f"document {document.id} references a missing source")
                 units = tuple(uow.knowledge_units.list_by_document(document.id))
-                summaries.append(DocumentSummary(document=document, source=source, units=units))
+                summaries.append(
+                    DocumentSummary(
+                        document=document,
+                        source=source,
+                        units=units,
+                        is_head=document.id in heads,
+                        statuses={
+                            unit.id: statuses[unit.id] for unit in units if unit.id in statuses
+                        },
+                    )
+                )
             return tuple(summaries)
+
+    def snapshot(
+        self, at: datetime | None = None, *, include_retired: bool = False
+    ) -> KnowledgeSnapshot:
+        """Return the effective knowledge at ``at`` (now when omitted)."""
+
+        return self._lifecycle.snapshot(at, include_retired=include_retired)
+
+    def unit_state(self, unit_id: UUID, at: datetime | None = None) -> UnitState | None:
+        """Return a unit's status at ``at``; ``None`` if not yet published then."""
+
+        return self._lifecycle.unit_state(unit_id, at)
 
     def show_unit(self, unit_id: UUID) -> KnowledgeUnitDetail:
         """Return one unit with its document and source, or raise a clear lookup error."""
@@ -197,11 +261,13 @@ class KnowledgeLibrary:
                 raise KnowledgeUnitNotFoundError(f"knowledge unit {unit_id} was not found")
             versions = tuple(uow.knowledge_units.list_by_lineage(unit.lineage_id))
             ingested_at: dict[UUID, datetime] = {}
+            source_ids: set[UUID] = set()
             for version in versions:
                 document = uow.documents.get(version.document_id)
                 if document is None:
                     raise RuntimeError(f"knowledge unit {version.id} references a missing document")
                 ingested_at[version.document_id] = document.ingested_at
+                source_ids.add(document.source_id)
             versions = tuple(
                 sorted(
                     versions,
@@ -211,12 +277,19 @@ class KnowledgeLibrary:
             revisions = tuple(
                 uow.revisions.list_for(RevisionEntityType.KNOWLEDGE_UNIT, unit.lineage_id)
             )
-            return UnitHistory(
-                unit=unit,
-                lineage_id=unit.lineage_id,
-                versions=versions,
-                revisions=revisions,
-            )
+        statuses: dict[UUID, KnowledgeUnitStatus] = {}
+        for source_id in source_ids:
+            current = self._lifecycle.snapshot(include_retired=True, source_id=source_id)
+            statuses.update(_statuses_by_unit(current))
+        return UnitHistory(
+            unit=unit,
+            lineage_id=unit.lineage_id,
+            versions=versions,
+            revisions=revisions,
+            statuses={
+                version.id: statuses[version.id] for version in versions if version.id in statuses
+            },
+        )
 
     def _import_file(self, path: Path) -> ImportedFile:
         source = self._ensure_file_source(path)

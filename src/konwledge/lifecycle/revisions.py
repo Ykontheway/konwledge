@@ -73,8 +73,13 @@ def revisions_for_diff(
     id_factory: IdFactory,
     clock: Clock,
     next_number: NextRevisionNumber,
+    extra_payload: dict[str, Any] | None = None,
 ) -> list[Revision]:
-    """Return the revisions a new document version adds to each affected lineage."""
+    """Return the revisions a new document version adds to each affected lineage.
+
+    ``extra_payload`` is merged into every payload, e.g. ``{"reverted": True}``
+    when a source returns to a document version it already published before.
+    """
 
     created_at = clock()
     return [
@@ -85,6 +90,7 @@ def revisions_for_diff(
             created_at=created_at,
             next_number=next_number,
             previous_document_id=previous_document_id,
+            extra_payload=extra_payload,
         )
         for change in diff.changes
         if change.kind is not UnitChangeKind.UNCHANGED
@@ -99,6 +105,7 @@ def _revision(
     created_at: datetime,
     next_number: NextRevisionNumber,
     previous_document_id: UUID | None,
+    extra_payload: dict[str, Any] | None = None,
 ) -> Revision:
     subject = change.new if change.new is not None else change.old
     if subject is None:  # pragma: no cover - UnitChange always carries one side
@@ -122,6 +129,8 @@ def _revision(
         payload["previous_content_hash"] = change.old.content_hash
     if change.kind is UnitChangeKind.MODIFIED:
         payload["similarity"] = change.similarity
+    if extra_payload:
+        payload.update(extra_payload)
     return Revision(
         id=id_factory(),
         entity_type=RevisionEntityType.KNOWLEDGE_UNIT,

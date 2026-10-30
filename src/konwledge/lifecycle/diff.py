@@ -28,6 +28,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from enum import StrEnum
+from uuid import UUID
 
 from konwledge.domain import KnowledgeUnit
 
@@ -124,6 +125,20 @@ class DocumentDiff:
                 changes.append(change)
         return DocumentDiff(changes=tuple(changes))
 
+    def with_new_units(self, units: Sequence[KnowledgeUnit]) -> DocumentDiff:
+        """Return a diff whose new side uses ``units`` (matched by id), e.g. after
+        persistence refreshed their cached lifecycle status."""
+
+        by_id = {unit.id: unit for unit in units}
+        return DocumentDiff(
+            changes=tuple(
+                change
+                if change.new is None or change.new.id not in by_id
+                else UnitChange(change.kind, change.old, by_id[change.new.id], change.similarity)
+                for change in self.changes
+            )
+        )
+
 
 def diff_units(
     old_units: Sequence[KnowledgeUnit],
@@ -168,6 +183,42 @@ def diff_units(
     ]
     changes.extend(
         UnitChange(UnitChangeKind.REMOVED, old[index], None, 0.0) for index in sorted(removed)
+    )
+    return DocumentDiff(changes=tuple(changes))
+
+
+def diff_by_lineage(
+    old_units: Sequence[KnowledgeUnit],
+    new_units: Sequence[KnowledgeUnit],
+) -> DocumentDiff:
+    """Classify changes between two *already persisted* versions by ``lineage_id``.
+
+    Used when a source returns to an earlier document version (for example a
+    revert): both sides already carry lineages, so no text matching is needed.
+    Units sharing a lineage are ``unchanged``/``moved`` when their text is
+    identical and ``modified`` otherwise; the rest are additions or removals.
+    """
+
+    old = sorted(old_units, key=lambda unit: unit.ordinal)
+    new = sorted(new_units, key=lambda unit: unit.ordinal)
+    old_by_lineage = {unit.lineage_id: unit for unit in old}
+    seen: set[UUID] = set()
+    changes: list[UnitChange] = []
+    for new_unit in new:
+        old_unit = old_by_lineage.get(new_unit.lineage_id)
+        if old_unit is None:
+            changes.append(UnitChange(UnitChangeKind.ADDED, None, new_unit, 0.0))
+            continue
+        seen.add(old_unit.lineage_id)
+        if old_unit.content_hash == new_unit.content_hash:
+            changes.append(UnitChange(_exact_kind(old_unit, new_unit), old_unit, new_unit, 1.0))
+        else:
+            ratio = SequenceMatcher(a=old_unit.text, b=new_unit.text, autojunk=False).ratio()
+            changes.append(UnitChange(UnitChangeKind.MODIFIED, old_unit, new_unit, round(ratio, 4)))
+    changes.extend(
+        UnitChange(UnitChangeKind.REMOVED, unit, None, 0.0)
+        for unit in old
+        if unit.lineage_id not in seen
     )
     return DocumentDiff(changes=tuple(changes))
 
