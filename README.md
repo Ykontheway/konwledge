@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U09 makes updates incremental: when a file changes, its new knowledge units are diffed against the previous version, matched units keep a stable `lineage_id`, every real change is appended to a per-lineage revision chain, and `IndexingService.apply_diff` re-embeds only added or modified units while reusing stored vectors for everything else.
+> Status: pre-alpha. U10 adds knowledge statuses and time travel: every unit version is `active`, `stale`, `superseded`, or `deleted`, derived from an append-only publication timeline, and `knowledge asof` shows exactly which knowledge was effective at any past moment or document version. Reverting a file to older content now republishes the old version instead of being ignored.
 
 ## Implemented increments
 
@@ -17,8 +17,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U07 | 2026-10-21 | Embedding provider protocol, deterministic hash test provider, batching service, and provider/model cache keys |
 | U08 | 2026-10-23 | `VectorIndex` protocol, in-memory top-K search with metadata filters, optional LanceDB adapter, and `IndexingService` for `KnowledgeUnit` vectors |
 | U09 | 2026-10-29 | Unit-level document diff, stable lineages, append-only revision chains, partial index rebuilds, `knowledge history`, and U08 LanceDB hardening |
+| U10 | 2026-10-30 | Publication timeline, `active`/`stale`/`superseded`/`deleted` statuses, as-of snapshots, revert handling, `knowledge asof`/`stale`/`refresh`/`reconcile` |
 
-Each increment builds on the previous branch, so the U09 branch contains the complete U01-U09 implementation.
+Each increment builds on the previous branch, so the U10 branch contains the complete U01-U10 implementation.
 
 ## Why this project
 
@@ -71,6 +72,7 @@ uv run knowledge import examples --database .konwledge/demo.db
 uv run knowledge list --database .konwledge/demo.db
 uv run knowledge show <unit-id-from-list> --database .konwledge/demo.db
 uv run knowledge history <unit-id-from-list> --database .konwledge/demo.db
+uv run knowledge asof --all --database .konwledge/demo.db
 ```
 
 `import` accepts one `.md`, `.markdown`, or `.txt` file, or recursively discovers those formats in
@@ -130,7 +132,9 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   ├── lifecycle/
 │   │   ├── __init__.py
 │   │   ├── diff.py
-│   │   └── revisions.py
+│   │   ├── revisions.py
+│   │   ├── service.py
+│   │   └── status.py
 │   ├── storage/
 │   │   ├── __init__.py
 │   │   ├── database.py
@@ -309,9 +313,69 @@ if result.diff is not None:
 ```
 
 Tests verify the acceptance criterion directly: with no embedding cache configured, the provider
-receives exactly the texts of the changed units. Unit statuses (`stale`, `superseded`, `deleted`)
-and as-of queries are intentionally left to U10; re-importing content identical to an older
-version currently reuses that old version without re-diffing.
+receives exactly the texts of the changed units. Statuses, as-of queries, and reverts build on this
+in U10 (see [Knowledge status and as-of queries](#knowledge-status-and-as-of-queries)).
+
+## Knowledge status and as-of queries
+
+U10 answers "which knowledge was valid at time T?". Each source keeps an append-only
+**publication timeline**: every time its head version changes, a `published` revision is recorded
+on the source. Because each document version is an immutable snapshot, the status of any unit
+version at any moment follows from that timeline plus the lineage's own revision chain:
+
+| Status | Meaning at time T |
+| --- | --- |
+| `active` | the unit belongs to the source's head version |
+| `stale` | head version, but the newest lineage revision at or before T is an explicit stale mark |
+| `superseded` | an older version whose lineage lives on in the head (edited, moved, or carried over) |
+| `deleted` | an older version whose lineage no longer exists in the head |
+
+Units of a version not yet published at T are invisible. A stale mark lasts until the next revision
+of the lineage: re-importing unchanged content keeps it, while an edit, a revert, or
+`knowledge refresh` clears it.
+
+```text
+$ knowledge asof --at 2026-10-30T15:11:51+08:00 --all
+as of: 2026-10-30T15:11:51+08:00
+source file /notes/guide.md
+  head: document 7f9c… published 2026-10-30T07:11:50+00:00
+  active     unit cd9f… section=Guide | # Guide Intro text.
+  active     unit 8401… section=Guide / Usage | ## Usage Run the CLI with --database.
+  active     unit 1868… section=Guide / FAQ | ## FAQ Ask in issues.
+  superseded unit f074… section=Guide | # Guide Intro text.
+  deleted    unit 8940… section=Guide / Install | ## Install Run uv sync.
+  superseded unit 6343… section=Guide / Usage | ## Usage Run the CLI.
+3 effective unit(s) across 1 source(s) | active=3 stale=0 superseded=2 deleted=1
+
+$ knowledge stale <unit-id> --reason "uv flags changed"
+$ knowledge show <unit-id> --at 2026-10-30T15:00:00+08:00
+$ knowledge asof --document <document-id>     # the moment that version was published
+$ knowledge refresh <unit-id> --reason "reviewed"
+```
+
+Other behaviour worth knowing:
+
+- **Reverts are real versions.** Restoring a file to content that was imported before republishes
+  the stored version (`reverted:` in the import output), diffs it against the head by lineage, and
+  appends `reverted` revisions, so `IndexingService.apply_diff` brings the index back as well. The
+  next new version is diffed against the head, not against the most recently created document.
+- **The revision log is the source of truth.** `knowledge_units.status` is a cache of the current
+  status, rewritten in the same transaction as every publication or mark so filters and vector
+  payloads can use it. As-of answers are always derived from the log.
+- **Older databases keep working.** Without publications, the timeline is inferred from ingestion
+  order (U09 behaviour). The next import of a source materializes that history as `backfilled`
+  publications, and `knowledge reconcile` rebuilds the cached statuses in one go.
+
+The Python API mirrors the CLI:
+
+```python
+library = KnowledgeLibrary(session_factory)
+snapshot = library.snapshot(at=datetime(2026, 10, 30, 7, 12, tzinfo=UTC), include_retired=True)
+print(snapshot.counts())  # {'active': 3, 'stale': 0, 'superseded': 2, 'deleted': 1}
+library.lifecycle.mark_stale(unit_id, reason="uv flags changed")
+```
+
+Time-based freshness policies that create stale marks automatically are planned for U11.
 
 ## License
 

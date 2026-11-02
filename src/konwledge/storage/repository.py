@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import Generic, Protocol, TypeVar
 from uuid import UUID
 
@@ -14,6 +14,7 @@ from konwledge.domain import (
     Citation,
     Document,
     KnowledgeUnit,
+    KnowledgeUnitStatus,
     Revision,
     RevisionEntityType,
     Source,
@@ -240,6 +241,18 @@ class KnowledgeUnitRepository(SqlAlchemyRepository[KnowledgeUnit, KnowledgeUnitR
         ).all()
         return [self._to_entity(row) for row in rows]
 
+    def set_status(self, unit_id: UUID, status: KnowledgeUnitStatus) -> bool:
+        """Update only the cached lifecycle status; return whether it changed."""
+
+        row = self._session.get(KnowledgeUnitRow, unit_id)
+        if row is None:
+            raise EntityNotFoundError(f"KnowledgeUnitRow {unit_id} was not found")
+        if row.status == status.value:
+            return False
+        row.status = status.value
+        self._session.flush()
+        return True
+
     def _to_row(self, entity: KnowledgeUnit) -> KnowledgeUnitRow:
         return KnowledgeUnitRow(
             id=entity.id,
@@ -310,6 +323,27 @@ class RevisionRepository(SqlAlchemyRepository[Revision, RevisionRow]):
             .order_by(RevisionRow.revision)
         ).all()
         return [self._to_entity(row) for row in rows]
+
+    def list_for_many(
+        self, entity_type: RevisionEntityType, entity_ids: Iterable[UUID]
+    ) -> dict[UUID, list[Revision]]:
+        """Return the revision chains of several entities with one query."""
+
+        ids = list(dict.fromkeys(entity_ids))
+        chains: dict[UUID, list[Revision]] = {entity_id: [] for entity_id in ids}
+        if not ids:
+            return chains
+        rows = self._session.scalars(
+            select(RevisionRow)
+            .where(
+                RevisionRow.entity_type == entity_type.value,
+                RevisionRow.entity_id.in_(ids),
+            )
+            .order_by(RevisionRow.entity_id, RevisionRow.revision)
+        ).all()
+        for row in rows:
+            chains[row.entity_id].append(self._to_entity(row))
+        return chains
 
     def latest_for(self, entity_type: RevisionEntityType, entity_id: UUID) -> Revision | None:
         """Return the newest revision of one entity, if any."""

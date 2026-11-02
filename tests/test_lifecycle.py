@@ -325,9 +325,15 @@ def test_reingesting_changed_file_links_lineages_and_appends_revisions(
         quiet_chain = uow.revisions.list_for(
             RevisionEntityType.KNOWLEDGE_UNIT, unchanged.lineage_id
         )
-        total_revisions = len(uow.revisions.list())
+        all_revisions = uow.revisions.list()
+        total_revisions = sum(
+            rev.entity_type is RevisionEntityType.KNOWLEDGE_UNIT for rev in all_revisions
+        )
+        publications = sum(rev.entity_type is RevisionEntityType.SOURCE for rev in all_revisions)
 
     assert persisted == second.units
+    # U10: each head change also appends one source-level "published" revision.
+    assert publications == 2
     assert [(rev.revision, rev.change_type) for rev in chain] == [
         (1, RevisionChangeType.CREATE),
         (2, RevisionChangeType.UPDATE),
