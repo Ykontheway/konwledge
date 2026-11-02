@@ -1,0 +1,1724 @@
+{
+  "schema_version": 1,
+  "title": "Knowledge CI 演示：一条知识的一生",
+  "as_of": "2026-10-20T11:00:00+08:00",
+  "stats": {
+    "sources": 2,
+    "documents": 4,
+    "published_documents": 4,
+    "units": 29,
+    "lineages": 13,
+    "revisions": 26,
+    "vectors": 12,
+    "statuses": {
+      "active": 11,
+      "stale": 1,
+      "superseded": 16,
+      "deleted": 1
+    },
+    "diff_kinds": {
+      "added": 2,
+      "modified": 3,
+      "moved": 1,
+      "unchanged": 12,
+      "removed": 1
+    }
+  },
+  "sources": [
+    {
+      "id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "kind": "file",
+      "uri": "deployment-guide.md",
+      "title": "deployment-guide.md",
+      "head_document_id": "f3e4fc81-945f-5349-a248-feda43839c62",
+      "documents": [
+        {
+          "id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "version": 1,
+          "checksum": "d731a7415bbc6ddf6b10d6b86855a428619e4e042c1291cd72a94a140ed1407c",
+          "content_type": "markdown",
+          "ingested_at": "2026-10-05T10:00:00+08:00",
+          "published_at": "2026-10-05T10:00:00+08:00",
+          "is_head": false,
+          "content": "# 服务部署手册\n\n本手册说明 order-service 的部署、验证与回滚流程，适用于预发和生产环境。\n\n## 服务端口\n\n服务默认监听 8000 端口，负载均衡器的健康检查也指向该端口。\n\n## 环境准备\n\n### 依赖安装\n\n使用 Python 3.11，执行 `uv sync --locked` 安装依赖。\n\n### 健康检查\n\n部署完成后访问 /healthz，返回 200 即表示进程已就绪。\n\n## 发布流程\n\n1. 合并到 main 分支后，CI 自动构建镜像。\n2. 在发布平台选择镜像版本，发布到生产集群。\n\n## 回滚脚本\n\n如需回滚，登录跳板机执行 ./scripts/rollback.sh <版本号>，脚本会依次重启全部实例。\n\n## 监控告警\n\n接口错误率超过 5% 并持续 5 分钟时，触发电话告警。\n",
+          "units": [
+            {
+              "id": "a917f265-e210-59c2-92f8-0417e44588e6",
+              "lineage_id": "a917f265-e210-59c2-92f8-0417e44588e6",
+              "ordinal": 0,
+              "start_char": 0,
+              "end_char": 55,
+              "heading": "服务部署手册",
+              "section_path": [
+                "服务部署手册"
+              ],
+              "text": "# 服务部署手册\n\n本手册说明 order-service 的部署、验证与回滚流程，适用于预发和生产环境。\n\n",
+              "content_hash": "bc2b26981b7ec95a2da8cdef5170115737d9b5f66d8de94286307ddc18ca84df",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+              "lineage_id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+              "ordinal": 1,
+              "start_char": 55,
+              "end_char": 98,
+              "heading": "服务端口",
+              "section_path": [
+                "服务部署手册",
+                "服务端口"
+              ],
+              "text": "## 服务端口\n\n服务默认监听 8000 端口，负载均衡器的健康检查也指向该端口。\n\n",
+              "content_hash": "2a1da7d4e5378426c663a28163023e49f734de3be075e0ab8f31639cfd312fe6",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+              "lineage_id": "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+              "ordinal": 2,
+              "start_char": 98,
+              "end_char": 107,
+              "heading": "环境准备",
+              "section_path": [
+                "服务部署手册",
+                "环境准备"
+              ],
+              "text": "## 环境准备\n\n",
+              "content_hash": "38b87dc030f03061e54b6070575369ba10ffe3bf6dff513b60c6d9a16d04f539",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "618988fd-a673-58a7-97a0-aedbb1128d04",
+              "lineage_id": "618988fd-a673-58a7-97a0-aedbb1128d04",
+              "ordinal": 3,
+              "start_char": 107,
+              "end_char": 161,
+              "heading": "依赖安装",
+              "section_path": [
+                "服务部署手册",
+                "环境准备",
+                "依赖安装"
+              ],
+              "text": "### 依赖安装\n\n使用 Python 3.11，执行 `uv sync --locked` 安装依赖。\n\n",
+              "content_hash": "fde8733e3710d4271a3f9b27fb46822d45f315323c15307ab206b394d5ef131c",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+              "lineage_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+              "ordinal": 4,
+              "start_char": 161,
+              "end_char": 206,
+              "heading": "健康检查",
+              "section_path": [
+                "服务部署手册",
+                "环境准备",
+                "健康检查"
+              ],
+              "text": "### 健康检查\n\n部署完成后访问 /healthz，返回 200 即表示进程已就绪。\n\n",
+              "content_hash": "4c1a9d79a09e10664837eb7bf941b7f057d8d2a86d94abd740df8beed8de9c93",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+              "lineage_id": "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+              "ordinal": 5,
+              "start_char": 206,
+              "end_char": 267,
+              "heading": "发布流程",
+              "section_path": [
+                "服务部署手册",
+                "发布流程"
+              ],
+              "text": "## 发布流程\n\n1. 合并到 main 分支后，CI 自动构建镜像。\n2. 在发布平台选择镜像版本，发布到生产集群。\n\n",
+              "content_hash": "410a6dc257b41d2a5b8a6318804ece0bd7ed10ef59d61870d599872555803055",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "2122e4e1-8c7f-5a15-92d9-d0eeef281231",
+              "lineage_id": "2122e4e1-8c7f-5a15-92d9-d0eeef281231",
+              "ordinal": 6,
+              "start_char": 267,
+              "end_char": 331,
+              "heading": "回滚脚本",
+              "section_path": [
+                "服务部署手册",
+                "回滚脚本"
+              ],
+              "text": "## 回滚脚本\n\n如需回滚，登录跳板机执行 ./scripts/rollback.sh <版本号>，脚本会依次重启全部实例。\n\n",
+              "content_hash": "2dd7784c810dadf080bdf87353b6e932e921f9ed06550e8808e82a9c4735937e",
+              "status": "deleted",
+              "stale_reason": null
+            },
+            {
+              "id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+              "lineage_id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+              "ordinal": 7,
+              "start_char": 331,
+              "end_char": 369,
+              "heading": "监控告警",
+              "section_path": [
+                "服务部署手册",
+                "监控告警"
+              ],
+              "text": "## 监控告警\n\n接口错误率超过 5% 并持续 5 分钟时，触发电话告警。\n",
+              "content_hash": "faf67b04f192b4f139beb857ea045b6d358363ec4ffdf73f84ecd0aec31519ed",
+              "status": "superseded",
+              "stale_reason": null
+            }
+          ]
+        },
+        {
+          "id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "version": 2,
+          "checksum": "a68bbb16961eb89c6a0bc00179606a23267a9ea1a813852170768887171e0d07",
+          "content_type": "markdown",
+          "ingested_at": "2026-10-12T14:00:00+08:00",
+          "published_at": "2026-10-12T14:00:00+08:00",
+          "is_head": false,
+          "content": "# 服务部署手册\n\n本手册说明 order-service 的部署、验证与回滚流程，适用于预发和生产环境。\n\n## 服务端口\n\n服务默认监听 8080 端口，负载均衡器的健康检查也指向该端口。\n\n## 环境准备\n\n### 依赖安装\n\n使用 Python 3.11，执行 `uv sync --locked` 安装依赖。\n\n## 发布流程\n\n1. 合并到 main 分支后，CI 自动构建镜像。\n2. 在发布平台选择镜像版本，发布到生产集群。\n\n## 灰度发布\n\n先发布 5% 的实例并观察 30 分钟，错误率没有上升再逐步放量到 100%。\n\n## 上线验证\n\n### 健康检查\n\n部署完成后访问 /healthz，返回 200 即表示进程已就绪。\n\n## 监控告警\n\n接口错误率超过 5% 并持续 5 分钟时，触发电话告警。\n",
+          "units": [
+            {
+              "id": "d779ce97-8932-5cb9-89be-406b99ba81fc",
+              "lineage_id": "a917f265-e210-59c2-92f8-0417e44588e6",
+              "ordinal": 0,
+              "start_char": 0,
+              "end_char": 55,
+              "heading": "服务部署手册",
+              "section_path": [
+                "服务部署手册"
+              ],
+              "text": "# 服务部署手册\n\n本手册说明 order-service 的部署、验证与回滚流程，适用于预发和生产环境。\n\n",
+              "content_hash": "bc2b26981b7ec95a2da8cdef5170115737d9b5f66d8de94286307ddc18ca84df",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+              "lineage_id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+              "ordinal": 1,
+              "start_char": 55,
+              "end_char": 98,
+              "heading": "服务端口",
+              "section_path": [
+                "服务部署手册",
+                "服务端口"
+              ],
+              "text": "## 服务端口\n\n服务默认监听 8080 端口，负载均衡器的健康检查也指向该端口。\n\n",
+              "content_hash": "a2aa739859300d8de23ee19a76bd48fcec350113f8a5adc06b412d86afbc19e7",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad",
+              "lineage_id": "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+              "ordinal": 2,
+              "start_char": 98,
+              "end_char": 107,
+              "heading": "环境准备",
+              "section_path": [
+                "服务部署手册",
+                "环境准备"
+              ],
+              "text": "## 环境准备\n\n",
+              "content_hash": "38b87dc030f03061e54b6070575369ba10ffe3bf6dff513b60c6d9a16d04f539",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7",
+              "lineage_id": "618988fd-a673-58a7-97a0-aedbb1128d04",
+              "ordinal": 3,
+              "start_char": 107,
+              "end_char": 161,
+              "heading": "依赖安装",
+              "section_path": [
+                "服务部署手册",
+                "环境准备",
+                "依赖安装"
+              ],
+              "text": "### 依赖安装\n\n使用 Python 3.11，执行 `uv sync --locked` 安装依赖。\n\n",
+              "content_hash": "fde8733e3710d4271a3f9b27fb46822d45f315323c15307ab206b394d5ef131c",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "ca35bec1-ce0d-5528-9813-e0ca616df32d",
+              "lineage_id": "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+              "ordinal": 4,
+              "start_char": 161,
+              "end_char": 222,
+              "heading": "发布流程",
+              "section_path": [
+                "服务部署手册",
+                "发布流程"
+              ],
+              "text": "## 发布流程\n\n1. 合并到 main 分支后，CI 自动构建镜像。\n2. 在发布平台选择镜像版本，发布到生产集群。\n\n",
+              "content_hash": "410a6dc257b41d2a5b8a6318804ece0bd7ed10ef59d61870d599872555803055",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+              "lineage_id": "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+              "ordinal": 5,
+              "start_char": 222,
+              "end_char": 272,
+              "heading": "灰度发布",
+              "section_path": [
+                "服务部署手册",
+                "灰度发布"
+              ],
+              "text": "## 灰度发布\n\n先发布 5% 的实例并观察 30 分钟，错误率没有上升再逐步放量到 100%。\n\n",
+              "content_hash": "d7222e32ed4039893cfcf7568608c912589c0d0906e2ea5b497413c0364c5351",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "813bbebd-be91-50c5-ad40-7d8ece530e33",
+              "lineage_id": "813bbebd-be91-50c5-ad40-7d8ece530e33",
+              "ordinal": 6,
+              "start_char": 272,
+              "end_char": 281,
+              "heading": "上线验证",
+              "section_path": [
+                "服务部署手册",
+                "上线验证"
+              ],
+              "text": "## 上线验证\n\n",
+              "content_hash": "3ffff57d9579ba93e4424a5f34419bfa11fd48a89af3ed1b7f4201c514647cb1",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "a3570614-e582-56e7-8fd7-4e19538edb1f",
+              "lineage_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+              "ordinal": 7,
+              "start_char": 281,
+              "end_char": 326,
+              "heading": "健康检查",
+              "section_path": [
+                "服务部署手册",
+                "上线验证",
+                "健康检查"
+              ],
+              "text": "### 健康检查\n\n部署完成后访问 /healthz，返回 200 即表示进程已就绪。\n\n",
+              "content_hash": "4c1a9d79a09e10664837eb7bf941b7f057d8d2a86d94abd740df8beed8de9c93",
+              "status": "superseded",
+              "stale_reason": null
+            },
+            {
+              "id": "bd93d748-f1a6-5580-a923-977ac706e6d3",
+              "lineage_id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+              "ordinal": 8,
+              "start_char": 326,
+              "end_char": 364,
+              "heading": "监控告警",
+              "section_path": [
+                "服务部署手册",
+                "监控告警"
+              ],
+              "text": "## 监控告警\n\n接口错误率超过 5% 并持续 5 分钟时，触发电话告警。\n",
+              "content_hash": "faf67b04f192b4f139beb857ea045b6d358363ec4ffdf73f84ecd0aec31519ed",
+              "status": "superseded",
+              "stale_reason": null
+            }
+          ]
+        },
+        {
+          "id": "f3e4fc81-945f-5349-a248-feda43839c62",
+          "version": 3,
+          "checksum": "6f700a7b1ba52eef603c678ede954944c91103ab228aad01e745bb6e93211d53",
+          "content_type": "markdown",
+          "ingested_at": "2026-10-19T16:00:00+08:00",
+          "published_at": "2026-10-19T16:00:00+08:00",
+          "is_head": true,
+          "content": "# 服务部署手册\n\n本手册说明 order-service 的部署、验证与回滚流程，适用于预发和生产环境。\n\n## 服务端口\n\n服务默认监听 8080 端口，可通过环境变量 PORT 覆盖；负载均衡器的健康检查也指向该端口。\n\n## 环境准备\n\n### 依赖安装\n\n使用 Python 3.11，执行 `uv sync --locked` 安装依赖。\n\n## 发布流程\n\n1. 合并到 main 分支后，CI 自动构建镜像。\n2. 在发布平台选择镜像版本，发布到生产集群。\n\n## 灰度发布\n\n先发布 5% 的实例并观察 30 分钟，错误率没有上升再逐步放量到 100%。\n\n## 上线验证\n\n### 健康检查\n\n部署完成后访问 /healthz，返回 200 即表示进程已就绪。\n\n## 监控告警\n\n接口错误率超过 2% 并持续 3 分钟时，触发电话告警；阈值已由 SRE 复核。\n",
+          "units": [
+            {
+              "id": "e4f0ba15-0074-5b8d-85b1-cdb315d3b048",
+              "lineage_id": "a917f265-e210-59c2-92f8-0417e44588e6",
+              "ordinal": 0,
+              "start_char": 0,
+              "end_char": 55,
+              "heading": "服务部署手册",
+              "section_path": [
+                "服务部署手册"
+              ],
+              "text": "# 服务部署手册\n\n本手册说明 order-service 的部署、验证与回滚流程，适用于预发和生产环境。\n\n",
+              "content_hash": "bc2b26981b7ec95a2da8cdef5170115737d9b5f66d8de94286307ddc18ca84df",
+              "status": "active",
+              "stale_reason": null
+            },
+            {
+              "id": "1d0cef30-2150-57ab-a034-cac8f650868d",
+              "lineage_id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+              "ordinal": 1,
+              "start_char": 55,
+              "end_char": 114,
+              "heading": "服务端口",
+              "section_path": [
+                "服务部署手册",
+                "服务端口"
+              ],
+              "text": "## 服务端口\n\n服务默认监听 8080 端口，可通过环境变量 PORT 覆盖；负载均衡器的健康检查也指向该端口。\n\n",
+              "content_hash": "8f4a098a49c9ae0b841463b0fb66c2e0eaa52371496e93497a299c07bb8ec69b",
+              "status": "active",
+              "stale_reason": null
+            },
+            {
+              "id": "4b5ddcbc-18fc-57aa-90f3-ec5904405612",
+              "lineage_id": "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+              "ordinal": 2,
+              "start_char": 114,
+              "end_char": 123,
+              "heading": "环境准备",
+              "section_path": [
+                "服务部署手册",
+                "环境准备"
+              ],
+              "text": "## 环境准备\n\n",
+              "content_hash": "38b87dc030f03061e54b6070575369ba10ffe3bf6dff513b60c6d9a16d04f539",
+              "status": "active",
+              "stale_reason": null
+            },
+            {
+              "id": "ac190cd4-f1a1-5850-b0a6-325c888fa8f0",
+              "lineage_id": "618988fd-a673-58a7-97a0-aedbb1128d04",
+              "ordinal": 3,
+              "start_char": 123,
+              "end_char": 177,
+              "heading": "依赖安装",
+              "section_path": [
+                "服务部署手册",
+                "环境准备",
+                "依赖安装"
+              ],
+              "text": "### 依赖安装\n\n使用 Python 3.11，执行 `uv sync --locked` 安装依赖。\n\n",
+              "content_hash": "fde8733e3710d4271a3f9b27fb46822d45f315323c15307ab206b394d5ef131c",
+              "status": "active",
+              "stale_reason": null
+            },
+            {
+              "id": "6fbbab28-3f19-5b7c-b90d-17b9d63ad49b",
+              "lineage_id": "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+              "ordinal": 4,
+              "start_char": 177,
+              "end_char": 238,
+              "heading": "发布流程",
+              "section_path": [
+                "服务部署手册",
+                "发布流程"
+              ],
+              "text": "## 发布流程\n\n1. 合并到 main 分支后，CI 自动构建镜像。\n2. 在发布平台选择镜像版本，发布到生产集群。\n\n",
+              "content_hash": "410a6dc257b41d2a5b8a6318804ece0bd7ed10ef59d61870d599872555803055",
+              "status": "active",
+              "stale_reason": null
+            },
+            {
+              "id": "81cea092-e2cb-55b3-9838-0bff8e41e0ba",
+              "lineage_id": "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+              "ordinal": 5,
+              "start_char": 238,
+              "end_char": 288,
+              "heading": "灰度发布",
+              "section_path": [
+                "服务部署手册",
+                "灰度发布"
+              ],
+              "text": "## 灰度发布\n\n先发布 5% 的实例并观察 30 分钟，错误率没有上升再逐步放量到 100%。\n\n",
+              "content_hash": "d7222e32ed4039893cfcf7568608c912589c0d0906e2ea5b497413c0364c5351",
+              "status": "active",
+              "stale_reason": null
+            },
+            {
+              "id": "4d7a7fb3-3230-532d-89d2-e2e3bccaa651",
+              "lineage_id": "813bbebd-be91-50c5-ad40-7d8ece530e33",
+              "ordinal": 6,
+              "start_char": 288,
+              "end_char": 297,
+              "heading": "上线验证",
+              "section_path": [
+                "服务部署手册",
+                "上线验证"
+              ],
+              "text": "## 上线验证\n\n",
+              "content_hash": "3ffff57d9579ba93e4424a5f34419bfa11fd48a89af3ed1b7f4201c514647cb1",
+              "status": "active",
+              "stale_reason": null
+            },
+            {
+              "id": "6d86bc0b-acd0-58e2-9340-709d6632b977",
+              "lineage_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+              "ordinal": 7,
+              "start_char": 297,
+              "end_char": 342,
+              "heading": "健康检查",
+              "section_path": [
+                "服务部署手册",
+                "上线验证",
+                "健康检查"
+              ],
+              "text": "### 健康检查\n\n部署完成后访问 /healthz，返回 200 即表示进程已就绪。\n\n",
+              "content_hash": "4c1a9d79a09e10664837eb7bf941b7f057d8d2a86d94abd740df8beed8de9c93",
+              "status": "active",
+              "stale_reason": null
+            },
+            {
+              "id": "e2a9e9a7-ae4d-5907-a65b-2f1bfbce0df1",
+              "lineage_id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+              "ordinal": 8,
+              "start_char": 342,
+              "end_char": 392,
+              "heading": "监控告警",
+              "section_path": [
+                "服务部署手册",
+                "监控告警"
+              ],
+              "text": "## 监控告警\n\n接口错误率超过 2% 并持续 3 分钟时，触发电话告警；阈值已由 SRE 复核。\n",
+              "content_hash": "a2780963fbdf80e27cfffdad77368a7282911c04cbc98364bb6e857ae5cb0dd2",
+              "status": "active",
+              "stale_reason": null
+            }
+          ]
+        }
+      ],
+      "timeline": [
+        {
+          "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "version": 1,
+          "published_at": "2026-10-05T10:00:00+08:00",
+          "reverted": false
+        },
+        {
+          "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "version": 2,
+          "published_at": "2026-10-12T14:00:00+08:00",
+          "reverted": false
+        },
+        {
+          "document_id": "f3e4fc81-945f-5349-a248-feda43839c62",
+          "version": 3,
+          "published_at": "2026-10-19T16:00:00+08:00",
+          "reverted": false
+        }
+      ],
+      "diffs": [
+        {
+          "from_document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "to_document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "from_version": 1,
+          "to_version": 2,
+          "published_at": "2026-10-12T14:00:00+08:00",
+          "reverted": false,
+          "summary": "+2 ~1 >1 =5 -1",
+          "counts": {
+            "added": 2,
+            "modified": 1,
+            "moved": 1,
+            "unchanged": 5,
+            "removed": 1
+          },
+          "embedding": {
+            "embedded": 3,
+            "reused": 6,
+            "deleted": 8
+          },
+          "changes": [
+            {
+              "kind": "unchanged",
+              "lineage_id": "a917f265-e210-59c2-92f8-0417e44588e6",
+              "old_unit_id": "a917f265-e210-59c2-92f8-0417e44588e6",
+              "new_unit_id": "d779ce97-8932-5cb9-89be-406b99ba81fc",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "modified",
+              "lineage_id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+              "old_unit_id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+              "new_unit_id": "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+              "similarity": 0.9767,
+              "needs_embedding": true
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+              "old_unit_id": "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+              "new_unit_id": "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "618988fd-a673-58a7-97a0-aedbb1128d04",
+              "old_unit_id": "618988fd-a673-58a7-97a0-aedbb1128d04",
+              "new_unit_id": "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+              "old_unit_id": "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+              "new_unit_id": "ca35bec1-ce0d-5528-9813-e0ca616df32d",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "added",
+              "lineage_id": "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+              "old_unit_id": null,
+              "new_unit_id": "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+              "similarity": 0.0,
+              "needs_embedding": true
+            },
+            {
+              "kind": "added",
+              "lineage_id": "813bbebd-be91-50c5-ad40-7d8ece530e33",
+              "old_unit_id": null,
+              "new_unit_id": "813bbebd-be91-50c5-ad40-7d8ece530e33",
+              "similarity": 0.0,
+              "needs_embedding": true
+            },
+            {
+              "kind": "moved",
+              "lineage_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+              "old_unit_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+              "new_unit_id": "a3570614-e582-56e7-8fd7-4e19538edb1f",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+              "old_unit_id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+              "new_unit_id": "bd93d748-f1a6-5580-a923-977ac706e6d3",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "removed",
+              "lineage_id": "2122e4e1-8c7f-5a15-92d9-d0eeef281231",
+              "old_unit_id": "2122e4e1-8c7f-5a15-92d9-d0eeef281231",
+              "new_unit_id": null,
+              "similarity": 0.0,
+              "needs_embedding": false
+            }
+          ]
+        },
+        {
+          "from_document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "to_document_id": "f3e4fc81-945f-5349-a248-feda43839c62",
+          "from_version": 2,
+          "to_version": 3,
+          "published_at": "2026-10-19T16:00:00+08:00",
+          "reverted": false,
+          "summary": "+0 ~2 >0 =7 -0",
+          "counts": {
+            "added": 0,
+            "modified": 2,
+            "moved": 0,
+            "unchanged": 7,
+            "removed": 0
+          },
+          "embedding": {
+            "embedded": 2,
+            "reused": 7,
+            "deleted": 9
+          },
+          "changes": [
+            {
+              "kind": "unchanged",
+              "lineage_id": "a917f265-e210-59c2-92f8-0417e44588e6",
+              "old_unit_id": "d779ce97-8932-5cb9-89be-406b99ba81fc",
+              "new_unit_id": "e4f0ba15-0074-5b8d-85b1-cdb315d3b048",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "modified",
+              "lineage_id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+              "old_unit_id": "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+              "new_unit_id": "1d0cef30-2150-57ab-a034-cac8f650868d",
+              "similarity": 0.8431,
+              "needs_embedding": true
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+              "old_unit_id": "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad",
+              "new_unit_id": "4b5ddcbc-18fc-57aa-90f3-ec5904405612",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "618988fd-a673-58a7-97a0-aedbb1128d04",
+              "old_unit_id": "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7",
+              "new_unit_id": "ac190cd4-f1a1-5850-b0a6-325c888fa8f0",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+              "old_unit_id": "ca35bec1-ce0d-5528-9813-e0ca616df32d",
+              "new_unit_id": "6fbbab28-3f19-5b7c-b90d-17b9d63ad49b",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+              "old_unit_id": "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+              "new_unit_id": "81cea092-e2cb-55b3-9838-0bff8e41e0ba",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "813bbebd-be91-50c5-ad40-7d8ece530e33",
+              "old_unit_id": "813bbebd-be91-50c5-ad40-7d8ece530e33",
+              "new_unit_id": "4d7a7fb3-3230-532d-89d2-e2e3bccaa651",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "unchanged",
+              "lineage_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+              "old_unit_id": "a3570614-e582-56e7-8fd7-4e19538edb1f",
+              "new_unit_id": "6d86bc0b-acd0-58e2-9340-709d6632b977",
+              "similarity": 1.0,
+              "needs_embedding": false
+            },
+            {
+              "kind": "modified",
+              "lineage_id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+              "old_unit_id": "bd93d748-f1a6-5580-a923-977ac706e6d3",
+              "new_unit_id": "e2a9e9a7-ae4d-5907-a65b-2f1bfbce0df1",
+              "similarity": 0.8182,
+              "needs_embedding": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "a65ad6cd-70c5-5630-8602-d7e073f7f603",
+      "kind": "file",
+      "uri": "oncall-faq.md",
+      "title": "oncall-faq.md",
+      "head_document_id": "f61d2593-5fee-589b-8274-f76a94b9ca2c",
+      "documents": [
+        {
+          "id": "f61d2593-5fee-589b-8274-f76a94b9ca2c",
+          "version": 1,
+          "checksum": "6aa53e49fedb3029de8ac2ae5bdfaceee0dd450db913d2cb5eaff54d72a187e3",
+          "content_type": "markdown",
+          "ingested_at": "2026-10-05T10:30:00+08:00",
+          "published_at": "2026-10-05T10:30:00+08:00",
+          "is_head": true,
+          "content": "# 值班 FAQ\n\n## 服务端口是多少？\n\norder-service 监听 8000 端口，排查连通性时先 curl 该端口的 /healthz。\n\n## 告警响了怎么办？\n\n先查看监控面板的错误率曲线，再对照《服务部署手册》判断是否需要回滚。\n",
+          "units": [
+            {
+              "id": "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+              "lineage_id": "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+              "ordinal": 0,
+              "start_char": 0,
+              "end_char": 10,
+              "heading": "值班 FAQ",
+              "section_path": [
+                "值班 FAQ"
+              ],
+              "text": "# 值班 FAQ\n\n",
+              "content_hash": "f328d764e5870b73a4e963a355a075057ea420038248b36670ff32cc72d0d72b",
+              "status": "active",
+              "stale_reason": null
+            },
+            {
+              "id": "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+              "lineage_id": "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+              "ordinal": 1,
+              "start_char": 10,
+              "end_char": 77,
+              "heading": "服务端口是多少？",
+              "section_path": [
+                "值班 FAQ",
+                "服务端口是多少？"
+              ],
+              "text": "## 服务端口是多少？\n\norder-service 监听 8000 端口，排查连通性时先 curl 该端口的 /healthz。\n\n",
+              "content_hash": "3cb930b053dda6a710b282b4e1da056af340eafa831cc26b2c28d2a9cba24026",
+              "status": "stale",
+              "stale_reason": "与《服务部署手册》v2 起的 8080 端口不一致"
+            },
+            {
+              "id": "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9",
+              "lineage_id": "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9",
+              "ordinal": 2,
+              "start_char": 77,
+              "end_char": 125,
+              "heading": "告警响了怎么办？",
+              "section_path": [
+                "值班 FAQ",
+                "告警响了怎么办？"
+              ],
+              "text": "## 告警响了怎么办？\n\n先查看监控面板的错误率曲线，再对照《服务部署手册》判断是否需要回滚。\n",
+              "content_hash": "e8fbe31785199798774b9a5be7ba6fe6a5f3116697c05fbcc6f266f0a51bbab5",
+              "status": "active",
+              "stale_reason": null
+            }
+          ]
+        }
+      ],
+      "timeline": [
+        {
+          "document_id": "f61d2593-5fee-589b-8274-f76a94b9ca2c",
+          "version": 1,
+          "published_at": "2026-10-05T10:30:00+08:00",
+          "reverted": false
+        }
+      ],
+      "diffs": []
+    }
+  ],
+  "lineages": [
+    {
+      "id": "a917f265-e210-59c2-92f8-0417e44588e6",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "服务部署手册",
+      "status": "active",
+      "unit_ids": [
+        "a917f265-e210-59c2-92f8-0417e44588e6",
+        "d779ce97-8932-5cb9-89be-406b99ba81fc",
+        "e4f0ba15-0074-5b8d-85b1-cdb315d3b048"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:00:00+08:00",
+          "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "unit_id": "a917f265-e210-59c2-92f8-0417e44588e6",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "服务端口",
+      "status": "active",
+      "unit_ids": [
+        "25c5113c-1edc-590a-b4bc-dd907016eac3",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+        "1d0cef30-2150-57ab-a034-cac8f650868d"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:00:00+08:00",
+          "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "unit_id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        },
+        {
+          "revision": 2,
+          "change_type": "update",
+          "change": "modified",
+          "created_at": "2026-10-12T14:00:00+08:00",
+          "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "unit_id": "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+          "previous_unit_id": "25c5113c-1edc-590a-b4bc-dd907016eac3",
+          "similarity": 0.9767,
+          "reason": null,
+          "reverted": false
+        },
+        {
+          "revision": 3,
+          "change_type": "update",
+          "change": "modified",
+          "created_at": "2026-10-19T16:00:00+08:00",
+          "document_id": "f3e4fc81-945f-5349-a248-feda43839c62",
+          "unit_id": "1d0cef30-2150-57ab-a034-cac8f650868d",
+          "previous_unit_id": "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+          "similarity": 0.8431,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "环境准备",
+      "status": "active",
+      "unit_ids": [
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad",
+        "4b5ddcbc-18fc-57aa-90f3-ec5904405612"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:00:00+08:00",
+          "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "unit_id": "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "618988fd-a673-58a7-97a0-aedbb1128d04",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "依赖安装",
+      "status": "active",
+      "unit_ids": [
+        "618988fd-a673-58a7-97a0-aedbb1128d04",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7",
+        "ac190cd4-f1a1-5850-b0a6-325c888fa8f0"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:00:00+08:00",
+          "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "unit_id": "618988fd-a673-58a7-97a0-aedbb1128d04",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "健康检查",
+      "status": "active",
+      "unit_ids": [
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f",
+        "6d86bc0b-acd0-58e2-9340-709d6632b977"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:00:00+08:00",
+          "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "unit_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        },
+        {
+          "revision": 2,
+          "change_type": "update",
+          "change": "moved",
+          "created_at": "2026-10-12T14:00:00+08:00",
+          "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "unit_id": "a3570614-e582-56e7-8fd7-4e19538edb1f",
+          "previous_unit_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        },
+        {
+          "revision": 3,
+          "change_type": "update",
+          "change": "stale",
+          "created_at": "2026-10-16T11:00:00+08:00",
+          "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "unit_id": "a3570614-e582-56e7-8fd7-4e19538edb1f",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": "探针路径待确认",
+          "reverted": false
+        },
+        {
+          "revision": 4,
+          "change_type": "update",
+          "change": "refreshed",
+          "created_at": "2026-10-17T15:00:00+08:00",
+          "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "unit_id": "a3570614-e582-56e7-8fd7-4e19538edb1f",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": "已确认探针路径仍为 /healthz",
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "发布流程",
+      "status": "active",
+      "unit_ids": [
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d",
+        "6fbbab28-3f19-5b7c-b90d-17b9d63ad49b"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:00:00+08:00",
+          "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "unit_id": "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "2122e4e1-8c7f-5a15-92d9-d0eeef281231",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "回滚脚本",
+      "status": "deleted",
+      "unit_ids": [
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:00:00+08:00",
+          "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "unit_id": "2122e4e1-8c7f-5a15-92d9-d0eeef281231",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        },
+        {
+          "revision": 2,
+          "change_type": "delete",
+          "change": "removed",
+          "created_at": "2026-10-12T14:00:00+08:00",
+          "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "unit_id": null,
+          "previous_unit_id": "2122e4e1-8c7f-5a15-92d9-d0eeef281231",
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "监控告警",
+      "status": "active",
+      "unit_ids": [
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3",
+        "e2a9e9a7-ae4d-5907-a65b-2f1bfbce0df1"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:00:00+08:00",
+          "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+          "unit_id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        },
+        {
+          "revision": 2,
+          "change_type": "update",
+          "change": "stale",
+          "created_at": "2026-10-15T09:30:00+08:00",
+          "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "unit_id": "bd93d748-f1a6-5580-a923-977ac706e6d3",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": "告警阈值待 SRE 复核",
+          "reverted": false
+        },
+        {
+          "revision": 3,
+          "change_type": "update",
+          "change": "modified",
+          "created_at": "2026-10-19T16:00:00+08:00",
+          "document_id": "f3e4fc81-945f-5349-a248-feda43839c62",
+          "unit_id": "e2a9e9a7-ae4d-5907-a65b-2f1bfbce0df1",
+          "previous_unit_id": "bd93d748-f1a6-5580-a923-977ac706e6d3",
+          "similarity": 0.8182,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "灰度发布",
+      "status": "active",
+      "unit_ids": [
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+        "81cea092-e2cb-55b3-9838-0bff8e41e0ba"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-12T14:00:00+08:00",
+          "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "unit_id": "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "813bbebd-be91-50c5-ad40-7d8ece530e33",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "label": "上线验证",
+      "status": "active",
+      "unit_ids": [
+        "813bbebd-be91-50c5-ad40-7d8ece530e33",
+        "4d7a7fb3-3230-532d-89d2-e2e3bccaa651"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-12T14:00:00+08:00",
+          "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+          "unit_id": "813bbebd-be91-50c5-ad40-7d8ece530e33",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+      "source_id": "a65ad6cd-70c5-5630-8602-d7e073f7f603",
+      "label": "值班 FAQ",
+      "status": "active",
+      "unit_ids": [
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:30:00+08:00",
+          "document_id": "f61d2593-5fee-589b-8274-f76a94b9ca2c",
+          "unit_id": "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+      "source_id": "a65ad6cd-70c5-5630-8602-d7e073f7f603",
+      "label": "服务端口是多少？",
+      "status": "stale",
+      "unit_ids": [
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:30:00+08:00",
+          "document_id": "f61d2593-5fee-589b-8274-f76a94b9ca2c",
+          "unit_id": "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        },
+        {
+          "revision": 2,
+          "change_type": "update",
+          "change": "stale",
+          "created_at": "2026-10-20T11:00:00+08:00",
+          "document_id": "f61d2593-5fee-589b-8274-f76a94b9ca2c",
+          "unit_id": "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": "与《服务部署手册》v2 起的 8080 端口不一致",
+          "reverted": false
+        }
+      ]
+    },
+    {
+      "id": "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9",
+      "source_id": "a65ad6cd-70c5-5630-8602-d7e073f7f603",
+      "label": "告警响了怎么办？",
+      "status": "active",
+      "unit_ids": [
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9"
+      ],
+      "revisions": [
+        {
+          "revision": 1,
+          "change_type": "create",
+          "change": "added",
+          "created_at": "2026-10-05T10:30:00+08:00",
+          "document_id": "f61d2593-5fee-589b-8274-f76a94b9ca2c",
+          "unit_id": "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9",
+          "previous_unit_id": null,
+          "similarity": null,
+          "reason": null,
+          "reverted": false
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-10-05T10:00:00+08:00",
+      "kind": "published",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "document_id": "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+      "version": 1,
+      "lineage_id": null,
+      "unit_id": null,
+      "reason": null
+    },
+    {
+      "at": "2026-10-05T10:30:00+08:00",
+      "kind": "published",
+      "source_id": "a65ad6cd-70c5-5630-8602-d7e073f7f603",
+      "document_id": "f61d2593-5fee-589b-8274-f76a94b9ca2c",
+      "version": 1,
+      "lineage_id": null,
+      "unit_id": null,
+      "reason": null
+    },
+    {
+      "at": "2026-10-12T14:00:00+08:00",
+      "kind": "published",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+      "version": 2,
+      "lineage_id": null,
+      "unit_id": null,
+      "reason": null
+    },
+    {
+      "at": "2026-10-15T09:30:00+08:00",
+      "kind": "stale",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+      "version": 2,
+      "lineage_id": "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+      "unit_id": "bd93d748-f1a6-5580-a923-977ac706e6d3",
+      "reason": "告警阈值待 SRE 复核"
+    },
+    {
+      "at": "2026-10-16T11:00:00+08:00",
+      "kind": "stale",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+      "version": 2,
+      "lineage_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+      "unit_id": "a3570614-e582-56e7-8fd7-4e19538edb1f",
+      "reason": "探针路径待确认"
+    },
+    {
+      "at": "2026-10-17T15:00:00+08:00",
+      "kind": "refreshed",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "document_id": "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+      "version": 2,
+      "lineage_id": "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+      "unit_id": "a3570614-e582-56e7-8fd7-4e19538edb1f",
+      "reason": "已确认探针路径仍为 /healthz"
+    },
+    {
+      "at": "2026-10-19T16:00:00+08:00",
+      "kind": "published",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210",
+      "document_id": "f3e4fc81-945f-5349-a248-feda43839c62",
+      "version": 3,
+      "lineage_id": null,
+      "unit_id": null,
+      "reason": null
+    },
+    {
+      "at": "2026-10-20T11:00:00+08:00",
+      "kind": "stale",
+      "source_id": "a65ad6cd-70c5-5630-8602-d7e073f7f603",
+      "document_id": "f61d2593-5fee-589b-8274-f76a94b9ca2c",
+      "version": 1,
+      "lineage_id": "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+      "unit_id": "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+      "reason": "与《服务部署手册》v2 起的 8080 端口不一致"
+    }
+  ],
+  "timepoints": [
+    {
+      "at": "2026-10-05T10:00:00+08:00",
+      "head_document_ids": [
+        "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f"
+      ],
+      "effective_unit_ids": [
+        "a917f265-e210-59c2-92f8-0417e44588e6",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+        "618988fd-a673-58a7-97a0-aedbb1128d04",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79"
+      ],
+      "counts": {
+        "active": 8,
+        "stale": 0,
+        "superseded": 0,
+        "deleted": 0
+      },
+      "statuses": {
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231": "active",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3": "active",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79": "active",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7": "active",
+        "618988fd-a673-58a7-97a0-aedbb1128d04": "active",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c": "active",
+        "a917f265-e210-59c2-92f8-0417e44588e6": "active",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7": "active"
+      }
+    },
+    {
+      "at": "2026-10-05T10:30:00+08:00",
+      "head_document_ids": [
+        "8818a2d9-e8a6-56ee-bbb4-7546587d3f7f",
+        "f61d2593-5fee-589b-8274-f76a94b9ca2c"
+      ],
+      "effective_unit_ids": [
+        "a917f265-e210-59c2-92f8-0417e44588e6",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7",
+        "618988fd-a673-58a7-97a0-aedbb1128d04",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c",
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9"
+      ],
+      "counts": {
+        "active": 11,
+        "stale": 0,
+        "superseded": 0,
+        "deleted": 0
+      },
+      "statuses": {
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231": "active",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3": "active",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79": "active",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7": "active",
+        "618988fd-a673-58a7-97a0-aedbb1128d04": "active",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e": "active",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c": "active",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9": "active",
+        "a917f265-e210-59c2-92f8-0417e44588e6": "active",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7": "active",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e": "active"
+      }
+    },
+    {
+      "at": "2026-10-12T14:00:00+08:00",
+      "head_document_ids": [
+        "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+        "f61d2593-5fee-589b-8274-f76a94b9ca2c"
+      ],
+      "effective_unit_ids": [
+        "d779ce97-8932-5cb9-89be-406b99ba81fc",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d",
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9"
+      ],
+      "counts": {
+        "active": 12,
+        "stale": 0,
+        "superseded": 7,
+        "deleted": 1
+      },
+      "statuses": {
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d": "active",
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231": "deleted",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9": "active",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3": "superseded",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79": "superseded",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7": "superseded",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad": "active",
+        "618988fd-a673-58a7-97a0-aedbb1128d04": "superseded",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33": "active",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e": "active",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c": "superseded",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9": "active",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f": "active",
+        "a917f265-e210-59c2-92f8-0417e44588e6": "superseded",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7": "superseded",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3": "active",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7": "active",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d": "active",
+        "d779ce97-8932-5cb9-89be-406b99ba81fc": "active",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e": "active"
+      }
+    },
+    {
+      "at": "2026-10-15T09:30:00+08:00",
+      "head_document_ids": [
+        "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+        "f61d2593-5fee-589b-8274-f76a94b9ca2c"
+      ],
+      "effective_unit_ids": [
+        "d779ce97-8932-5cb9-89be-406b99ba81fc",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d",
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9"
+      ],
+      "counts": {
+        "active": 11,
+        "stale": 1,
+        "superseded": 7,
+        "deleted": 1
+      },
+      "statuses": {
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d": "active",
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231": "deleted",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9": "active",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3": "superseded",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79": "superseded",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7": "superseded",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad": "active",
+        "618988fd-a673-58a7-97a0-aedbb1128d04": "superseded",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33": "active",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e": "active",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c": "superseded",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9": "active",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f": "active",
+        "a917f265-e210-59c2-92f8-0417e44588e6": "superseded",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7": "superseded",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3": "stale",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7": "active",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d": "active",
+        "d779ce97-8932-5cb9-89be-406b99ba81fc": "active",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e": "active"
+      }
+    },
+    {
+      "at": "2026-10-16T11:00:00+08:00",
+      "head_document_ids": [
+        "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+        "f61d2593-5fee-589b-8274-f76a94b9ca2c"
+      ],
+      "effective_unit_ids": [
+        "d779ce97-8932-5cb9-89be-406b99ba81fc",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d",
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9"
+      ],
+      "counts": {
+        "active": 10,
+        "stale": 2,
+        "superseded": 7,
+        "deleted": 1
+      },
+      "statuses": {
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d": "active",
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231": "deleted",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9": "active",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3": "superseded",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79": "superseded",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7": "superseded",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad": "active",
+        "618988fd-a673-58a7-97a0-aedbb1128d04": "superseded",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33": "active",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e": "active",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c": "superseded",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9": "active",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f": "stale",
+        "a917f265-e210-59c2-92f8-0417e44588e6": "superseded",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7": "superseded",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3": "stale",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7": "active",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d": "active",
+        "d779ce97-8932-5cb9-89be-406b99ba81fc": "active",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e": "active"
+      }
+    },
+    {
+      "at": "2026-10-17T15:00:00+08:00",
+      "head_document_ids": [
+        "32d3304c-bb43-5ee6-9e7b-636646f4331d",
+        "f61d2593-5fee-589b-8274-f76a94b9ca2c"
+      ],
+      "effective_unit_ids": [
+        "d779ce97-8932-5cb9-89be-406b99ba81fc",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d",
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9"
+      ],
+      "counts": {
+        "active": 11,
+        "stale": 1,
+        "superseded": 7,
+        "deleted": 1
+      },
+      "statuses": {
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d": "active",
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231": "deleted",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9": "active",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3": "superseded",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79": "superseded",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7": "superseded",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad": "active",
+        "618988fd-a673-58a7-97a0-aedbb1128d04": "superseded",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33": "active",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e": "active",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c": "superseded",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9": "active",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f": "active",
+        "a917f265-e210-59c2-92f8-0417e44588e6": "superseded",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7": "superseded",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3": "stale",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7": "active",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d": "active",
+        "d779ce97-8932-5cb9-89be-406b99ba81fc": "active",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e": "active"
+      }
+    },
+    {
+      "at": "2026-10-19T16:00:00+08:00",
+      "head_document_ids": [
+        "f3e4fc81-945f-5349-a248-feda43839c62",
+        "f61d2593-5fee-589b-8274-f76a94b9ca2c"
+      ],
+      "effective_unit_ids": [
+        "e4f0ba15-0074-5b8d-85b1-cdb315d3b048",
+        "1d0cef30-2150-57ab-a034-cac8f650868d",
+        "4b5ddcbc-18fc-57aa-90f3-ec5904405612",
+        "ac190cd4-f1a1-5850-b0a6-325c888fa8f0",
+        "6fbbab28-3f19-5b7c-b90d-17b9d63ad49b",
+        "81cea092-e2cb-55b3-9838-0bff8e41e0ba",
+        "4d7a7fb3-3230-532d-89d2-e2e3bccaa651",
+        "6d86bc0b-acd0-58e2-9340-709d6632b977",
+        "e2a9e9a7-ae4d-5907-a65b-2f1bfbce0df1",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9"
+      ],
+      "counts": {
+        "active": 12,
+        "stale": 0,
+        "superseded": 16,
+        "deleted": 1
+      },
+      "statuses": {
+        "1d0cef30-2150-57ab-a034-cac8f650868d": "active",
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d": "superseded",
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231": "deleted",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9": "superseded",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3": "superseded",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79": "superseded",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7": "superseded",
+        "4b5ddcbc-18fc-57aa-90f3-ec5904405612": "active",
+        "4d7a7fb3-3230-532d-89d2-e2e3bccaa651": "active",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad": "superseded",
+        "618988fd-a673-58a7-97a0-aedbb1128d04": "superseded",
+        "6d86bc0b-acd0-58e2-9340-709d6632b977": "active",
+        "6fbbab28-3f19-5b7c-b90d-17b9d63ad49b": "active",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33": "superseded",
+        "81cea092-e2cb-55b3-9838-0bff8e41e0ba": "active",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e": "active",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c": "superseded",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9": "active",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f": "superseded",
+        "a917f265-e210-59c2-92f8-0417e44588e6": "superseded",
+        "ac190cd4-f1a1-5850-b0a6-325c888fa8f0": "active",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7": "superseded",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3": "superseded",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7": "superseded",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d": "superseded",
+        "d779ce97-8932-5cb9-89be-406b99ba81fc": "superseded",
+        "e2a9e9a7-ae4d-5907-a65b-2f1bfbce0df1": "active",
+        "e4f0ba15-0074-5b8d-85b1-cdb315d3b048": "active",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e": "active"
+      }
+    },
+    {
+      "at": "2026-10-20T11:00:00+08:00",
+      "head_document_ids": [
+        "f3e4fc81-945f-5349-a248-feda43839c62",
+        "f61d2593-5fee-589b-8274-f76a94b9ca2c"
+      ],
+      "effective_unit_ids": [
+        "e4f0ba15-0074-5b8d-85b1-cdb315d3b048",
+        "1d0cef30-2150-57ab-a034-cac8f650868d",
+        "4b5ddcbc-18fc-57aa-90f3-ec5904405612",
+        "ac190cd4-f1a1-5850-b0a6-325c888fa8f0",
+        "6fbbab28-3f19-5b7c-b90d-17b9d63ad49b",
+        "81cea092-e2cb-55b3-9838-0bff8e41e0ba",
+        "4d7a7fb3-3230-532d-89d2-e2e3bccaa651",
+        "6d86bc0b-acd0-58e2-9340-709d6632b977",
+        "e2a9e9a7-ae4d-5907-a65b-2f1bfbce0df1",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9"
+      ],
+      "counts": {
+        "active": 11,
+        "stale": 1,
+        "superseded": 16,
+        "deleted": 1
+      },
+      "statuses": {
+        "1d0cef30-2150-57ab-a034-cac8f650868d": "active",
+        "1d61b47d-40cf-5cfe-ac89-554c1f23e64d": "superseded",
+        "2122e4e1-8c7f-5a15-92d9-d0eeef281231": "deleted",
+        "2231bc13-ba8b-52da-a77b-e8950e81cfa9": "superseded",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3": "superseded",
+        "4a12bd94-d189-5e1b-9c21-d0aa89439e79": "superseded",
+        "4b1b2980-3ed3-5276-8266-ad73f333ddd7": "superseded",
+        "4b5ddcbc-18fc-57aa-90f3-ec5904405612": "active",
+        "4d7a7fb3-3230-532d-89d2-e2e3bccaa651": "active",
+        "5e75dd88-49c2-584a-8dd5-3bf1834ea6ad": "superseded",
+        "618988fd-a673-58a7-97a0-aedbb1128d04": "superseded",
+        "6d86bc0b-acd0-58e2-9340-709d6632b977": "active",
+        "6fbbab28-3f19-5b7c-b90d-17b9d63ad49b": "active",
+        "813bbebd-be91-50c5-ad40-7d8ece530e33": "superseded",
+        "81cea092-e2cb-55b3-9838-0bff8e41e0ba": "active",
+        "84f85c0f-e028-5f18-8252-eb0c800f2d0e": "active",
+        "991b6abf-cc56-50db-a5ea-2255e2080d1c": "superseded",
+        "9a870eb0-e38b-55b0-be8d-aab3eea0b0b9": "active",
+        "a3570614-e582-56e7-8fd7-4e19538edb1f": "superseded",
+        "a917f265-e210-59c2-92f8-0417e44588e6": "superseded",
+        "ac190cd4-f1a1-5850-b0a6-325c888fa8f0": "active",
+        "bd7219b7-b2e7-5e1c-a9a3-ed4f60c914e7": "superseded",
+        "bd93d748-f1a6-5580-a923-977ac706e6d3": "superseded",
+        "c5e2fb31-7c91-539b-a8f3-9b0bbd3546d7": "superseded",
+        "ca35bec1-ce0d-5528-9813-e0ca616df32d": "superseded",
+        "d779ce97-8932-5cb9-89be-406b99ba81fc": "superseded",
+        "e2a9e9a7-ae4d-5907-a65b-2f1bfbce0df1": "active",
+        "e4f0ba15-0074-5b8d-85b1-cdb315d3b048": "active",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e": "stale"
+      }
+    }
+  ],
+  "story": [
+    {
+      "at": "2026-10-05T10:00:00+08:00",
+      "title": "导入《服务部署手册》v1",
+      "description": "手册写明服务端口 8000。每个知识片段都记录了字符区间和章节路径。"
+    },
+    {
+      "at": "2026-10-05T10:30:00+08:00",
+      "title": "导入《值班 FAQ》",
+      "description": "FAQ 同样写着端口 8000，此时两份资料口径一致。"
+    },
+    {
+      "at": "2026-10-12T14:00:00+08:00",
+      "title": "发布《服务部署手册》v2",
+      "description": "端口改为 8080，新增灰度发布，健康检查挪到上线验证下，删除旧回滚脚本。五类变化齐全，只有新增和修改的片段重算向量。"
+    },
+    {
+      "at": "2026-10-15T09:30:00+08:00",
+      "title": "标记“监控告警”过期",
+      "description": "告警阈值很久没人复核，先标为 stale，检索时可以降权或提示。"
+    },
+    {
+      "at": "2026-10-16T11:00:00+08:00",
+      "title": "标记“健康检查”过期",
+      "description": "有人怀疑探针路径已经变了，先标为 stale。"
+    },
+    {
+      "at": "2026-10-17T15:00:00+08:00",
+      "title": "确认“健康检查”仍然有效",
+      "description": "确认 /healthz 没变，refresh 后恢复 active，过程留在修订链里。"
+    },
+    {
+      "at": "2026-10-19T16:00:00+08:00",
+      "title": "发布《服务部署手册》v3",
+      "description": "端口说明补充 PORT 环境变量，告警阈值改写。内容更新自动清除过期标记。"
+    },
+    {
+      "at": "2026-10-20T11:00:00+08:00",
+      "title": "标记 FAQ 端口答案过期",
+      "description": "FAQ 仍写 8000，与手册 v2 起的 8080 不一致。U12 会把它识别为冲突候选。"
+    }
+  ]
+}

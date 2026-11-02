@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U10 adds knowledge statuses and time travel: every unit version is `active`, `stale`, `superseded`, or `deleted`, derived from an append-only publication timeline, and `knowledge asof` shows exactly which knowledge was effective at any past moment or document version. Reverting a file to older content now republishes the old version instead of being ignored.
+> Status: pre-alpha. V1 starts the demo track: a scripted three-version story is played into a deterministic library, and `knowledge demo export` turns it into a versioned JSON snapshot (plus JSON Schema) that the upcoming static demo site will render. Two builds in different directories export byte-identical files, and CI fails when the committed snapshot drifts.
 
 ## Implemented increments
 
@@ -18,8 +18,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U08 | 2026-10-23 | `VectorIndex` protocol, in-memory top-K search with metadata filters, optional LanceDB adapter, and `IndexingService` for `KnowledgeUnit` vectors |
 | U09 | 2026-10-29 | Unit-level document diff, stable lineages, append-only revision chains, partial index rebuilds, `knowledge history`, and U08 LanceDB hardening |
 | U10 | 2026-10-30 | Publication timeline, `active`/`stale`/`superseded`/`deleted` statuses, as-of snapshots, revert handling, `knowledge asof`/`stale`/`refresh`/`reconcile` |
+| V1 | 2026-11-02 | Demo corpus and story, deterministic `knowledge demo build`, `knowledge demo export` with a Pydantic snapshot model, JSON Schema, golden-file tests, and a CI drift check |
 
-Each increment builds on the previous branch, so the U10 branch contains the complete U01-U10 implementation.
+Each increment builds on the previous branch, so the V1 branch contains the complete U01-U10 and V1 implementation. `U` slices grow the core library; `V` slices build the read-only demo site on top of it.
 
 ## Why this project
 
@@ -94,6 +95,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy src tests
 uv run pytest --cov=konwledge --cov-report=term-missing
+uv run knowledge demo build --force && uv run knowledge demo export --check
 ```
 
 The optional LanceDB adapter has its own CI job. Run it locally with:
@@ -129,12 +131,21 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   │   ├── pipeline.py
 │   │   ├── service.py
 │   │   └── splitting.py
+│   ├── demo/
+│   │   ├── corpus/          # packaged story files (guide v1-v3, on-call FAQ)
+│   │   ├── __init__.py
+│   │   ├── builder.py
+│   │   └── scenario.py
 │   ├── lifecycle/
 │   │   ├── __init__.py
 │   │   ├── diff.py
 │   │   ├── revisions.py
 │   │   ├── service.py
 │   │   └── status.py
+│   ├── snapshot/
+│   │   ├── __init__.py
+│   │   ├── export.py
+│   │   └── models.py
 │   ├── storage/
 │   │   ├── __init__.py
 │   │   ├── database.py
@@ -145,6 +156,10 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   ├── __main__.py
 │   ├── application.py
 │   └── cli.py
+├── demo/
+│   ├── README.md
+│   ├── snapshot.json        # generated, committed, checked in CI
+│   └── snapshot.schema.json # generated, committed, checked in CI
 ├── examples/
 │   ├── getting-started.md
 │   └── lifecycle.txt
@@ -376,6 +391,50 @@ library.lifecycle.mark_stale(unit_id, reason="uv flags changed")
 ```
 
 Time-based freshness policies that create stale marks automatically are planned for U11.
+
+## Demo snapshot
+
+The demo site (V2-V4) is a static page that only renders data; every number it shows comes from a
+JSON snapshot exported by the CLI. V1 provides that data pipeline.
+
+```bash
+uv run knowledge demo build            # plays the story into .konwledge/demo/
+uv run knowledge demo export           # writes demo/snapshot.json and demo/snapshot.schema.json
+uv run knowledge demo export --check   # exit 1 if the committed files are out of date
+```
+
+The story ("the life of one piece of knowledge") follows a fictional service deployment guide
+through three versions while an on-call FAQ keeps quoting the old port:
+
+```text
+2026-10-05T10:00:00+08:00 | 导入《服务部署手册》v1 | units=8 | embedded=8 reused=0 deleted=0
+2026-10-05T10:30:00+08:00 | 导入《值班 FAQ》 | units=3 | embedded=3 reused=0 deleted=0
+2026-10-12T14:00:00+08:00 | 发布《服务部署手册》v2 | changes=+2 ~1 >1 =5 -1 | embedded=3 reused=6 deleted=8
+2026-10-15T09:30:00+08:00 | 标记“监控告警”过期 | stale: 监控告警
+2026-10-16T11:00:00+08:00 | 标记“健康检查”过期 | stale: 健康检查
+2026-10-17T15:00:00+08:00 | 确认“健康检查”仍然有效 | refreshed: 健康检查
+2026-10-19T16:00:00+08:00 | 发布《服务部署手册》v3 | changes=+0 ~2 >0 =7 -0 | embedded=2 reused=7 deleted=9
+2026-10-20T11:00:00+08:00 | 标记 FAQ 端口答案过期 | stale: 服务端口是多少？
+Demo library built in .../.konwledge/demo (8 steps, 12 vectors in the index).
+```
+
+The v1 -> v2 diff contains all five change kinds, and the final state contains all four statuses.
+The embedding numbers above come from a real `IndexingService` run during the build and match the
+`embedding` block the exporter computes for each diff.
+
+- **Deterministic by construction.** The builder injects a sequential UUID factory and a scripted
+  clock into `KnowledgeLibrary` (which now passes both to every layer), and the corpus ships inside
+  the package. Two builds in different directories export byte-identical files.
+- **Derived, not duplicated.** `export_snapshot` reads only the metadata store: statuses and the
+  per-event as-of `timepoints` come from `LifecycleService`, diffs are recomputed by lineage
+  between consecutive head versions, and document text is rebuilt from the units and kept only
+  when it reproduces the stored checksum. File URIs are made relative so no machine paths leak.
+- **A versioned contract.** `LibrarySnapshot` (Pydantic) is the single contract with the front end;
+  `demo/snapshot.schema.json` is generated from it. Breaking changes bump `schema_version`.
+- **Guarded against drift.** `tests/test_demo.py` compares a fresh export with the committed golden
+  files, validates the snapshot against the schema, and CI repeats the check through the CLI.
+
+See [demo/README.md](demo/README.md) for the snapshot layout.
 
 ## License
 
