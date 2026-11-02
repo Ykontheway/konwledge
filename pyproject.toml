@@ -44,10 +44,12 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+  "jsonschema>=4.23,<5",
   "mypy>=1.18.2,<2",
   "pytest>=8.4.2,<9",
   "pytest-cov>=7.0.0,<8",
   "ruff>=0.14.0,<1",
+  "types-jsonschema>=4.26.0.20261006",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -77,6 +79,8 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# The demo story is written in Chinese, which uses full-width punctuation.
+allowed-confusables = ["，", "：", "；", "？", "（", "）"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -24,6 +24,7 @@ from konwledge.ingestion import (
     KnowledgeUnitService,
     TraceableIngestionResult,
     TraceableIngestionService,
+    TraceableTextSplitter,
 )
 from konwledge.lifecycle import (
     KnowledgeSnapshot,
@@ -171,9 +172,16 @@ class KnowledgeLibrary:
         self._session_factory = session_factory
         self._id_factory = id_factory
         self._clock = clock or (lambda: datetime.now(UTC))
+        # The injected id factory and clock reach every layer, so a library built
+        # with deterministic ones (tests, the demo scenario) is fully reproducible.
         self._ingestion_service = ingestion_service or TraceableIngestionService(
-            FileIngestionService(session_factory),
-            KnowledgeUnitService(session_factory),
+            FileIngestionService(session_factory, id_factory=id_factory, clock=clock),
+            KnowledgeUnitService(
+                session_factory,
+                splitter=TraceableTextSplitter(id_factory=id_factory),
+                revision_id_factory=id_factory,
+                clock=clock,
+            ),
         )
         self._lifecycle = LifecycleService(session_factory, id_factory=id_factory, clock=clock)
 

@@ -1,0 +1,961 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ykontheway/konwledge/blob/main/demo/snapshot.schema.json",
+  "$defs": {
+    "DiffView": {
+      "additionalProperties": false,
+      "description": "The unit-level diff behind one publication of a source.",
+      "properties": {
+        "from_document_id": {
+          "format": "uuid",
+          "title": "From Document Id",
+          "type": "string"
+        },
+        "to_document_id": {
+          "format": "uuid",
+          "title": "To Document Id",
+          "type": "string"
+        },
+        "from_version": {
+          "title": "From Version",
+          "type": "integer"
+        },
+        "to_version": {
+          "title": "To Version",
+          "type": "integer"
+        },
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "reverted": {
+          "title": "Reverted",
+          "type": "boolean"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Number of changes per kind, all five kinds.",
+          "title": "Counts",
+          "type": "object"
+        },
+        "embedding": {
+          "$ref": "#/$defs/EmbeddingWork"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/UnitChangeView"
+          },
+          "title": "Changes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "from_document_id",
+        "to_document_id",
+        "from_version",
+        "to_version",
+        "published_at",
+        "reverted",
+        "summary",
+        "counts",
+        "embedding",
+        "changes"
+      ],
+      "title": "DiffView",
+      "type": "object"
+    },
+    "DocumentContentType": {
+      "description": "Content formats supported by the first ingestion milestone.",
+      "enum": [
+        "text",
+        "markdown"
+      ],
+      "title": "DocumentContentType",
+      "type": "string"
+    },
+    "DocumentView": {
+      "additionalProperties": false,
+      "description": "One immutable document version of a source.",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "1-based order of first publication; null if never published.",
+          "title": "Version"
+        },
+        "checksum": {
+          "title": "Checksum",
+          "type": "string"
+        },
+        "content_type": {
+          "$ref": "#/$defs/DocumentContentType"
+        },
+        "ingested_at": {
+          "format": "date-time",
+          "title": "Ingested At",
+          "type": "string"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the version first became head.",
+          "title": "Published At"
+        },
+        "is_head": {
+          "title": "Is Head",
+          "type": "boolean"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Normalized text rebuilt from the units and verified against the checksum; null when the units do not reproduce it exactly.",
+          "title": "Content"
+        },
+        "units": {
+          "items": {
+            "$ref": "#/$defs/UnitView"
+          },
+          "title": "Units",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "checksum",
+        "content_type",
+        "ingested_at",
+        "published_at",
+        "is_head",
+        "content",
+        "units"
+      ],
+      "title": "DocumentView",
+      "type": "object"
+    },
+    "EmbeddingWork": {
+      "additionalProperties": false,
+      "description": "Vector work an incremental index update performs for one diff.",
+      "properties": {
+        "embedded": {
+          "description": "Added and modified units that are re-embedded.",
+          "minimum": 0,
+          "title": "Embedded",
+          "type": "integer"
+        },
+        "reused": {
+          "description": "Unchanged and moved units that keep their vector.",
+          "minimum": 0,
+          "title": "Reused",
+          "type": "integer"
+        },
+        "deleted": {
+          "description": "Vectors of the previous version that are removed.",
+          "minimum": 0,
+          "title": "Deleted",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "embedded",
+        "reused",
+        "deleted"
+      ],
+      "title": "EmbeddingWork",
+      "type": "object"
+    },
+    "EventView": {
+      "additionalProperties": false,
+      "description": "A moment that changed effective knowledge: a publication or a status mark.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "published",
+            "reverted",
+            "stale",
+            "refreshed"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source_id": {
+          "format": "uuid",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Id"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "lineage_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lineage Id"
+        },
+        "unit_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit Id"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "at",
+        "kind",
+        "source_id"
+      ],
+      "title": "EventView",
+      "type": "object"
+    },
+    "KnowledgeUnitStatus": {
+      "description": "Lifecycle states that determine whether a knowledge unit is publishable.",
+      "enum": [
+        "active",
+        "stale",
+        "superseded",
+        "deleted"
+      ],
+      "title": "KnowledgeUnitStatus",
+      "type": "string"
+    },
+    "LineageView": {
+      "additionalProperties": false,
+      "description": "One piece of knowledge followed across document versions.",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "source_id": {
+          "format": "uuid",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KnowledgeUnitStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit_ids": {
+          "description": "Unit versions in publication order.",
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Unit Ids",
+          "type": "array"
+        },
+        "revisions": {
+          "items": {
+            "$ref": "#/$defs/RevisionView"
+          },
+          "title": "Revisions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "label",
+        "status",
+        "unit_ids",
+        "revisions"
+      ],
+      "title": "LineageView",
+      "type": "object"
+    },
+    "PublicationView": {
+      "additionalProperties": false,
+      "description": "A head change of one source.",
+      "properties": {
+        "document_id": {
+          "format": "uuid",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        },
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "reverted": {
+          "title": "Reverted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "document_id",
+        "version",
+        "published_at",
+        "reverted"
+      ],
+      "title": "PublicationView",
+      "type": "object"
+    },
+    "RevisionView": {
+      "additionalProperties": false,
+      "description": "One entry of a lineage's append-only revision chain.",
+      "properties": {
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "change_type": {
+          "title": "Change Type",
+          "type": "string"
+        },
+        "change": {
+          "title": "Change",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Document Id"
+        },
+        "unit_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit Id"
+        },
+        "previous_unit_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Previous Unit Id"
+        },
+        "similarity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Similarity"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "reverted": {
+          "title": "Reverted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "revision",
+        "change_type",
+        "change",
+        "created_at",
+        "document_id",
+        "unit_id",
+        "previous_unit_id",
+        "similarity",
+        "reason",
+        "reverted"
+      ],
+      "title": "RevisionView",
+      "type": "object"
+    },
+    "SnapshotStats": {
+      "additionalProperties": false,
+      "description": "Headline counts for the overview page.",
+      "properties": {
+        "sources": {
+          "title": "Sources",
+          "type": "integer"
+        },
+        "documents": {
+          "title": "Documents",
+          "type": "integer"
+        },
+        "published_documents": {
+          "title": "Published Documents",
+          "type": "integer"
+        },
+        "units": {
+          "title": "Units",
+          "type": "integer"
+        },
+        "lineages": {
+          "title": "Lineages",
+          "type": "integer"
+        },
+        "revisions": {
+          "title": "Revisions",
+          "type": "integer"
+        },
+        "vectors": {
+          "description": "Units served by the index: the current head versions.",
+          "title": "Vectors",
+          "type": "integer"
+        },
+        "statuses": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Statuses",
+          "type": "object"
+        },
+        "diff_kinds": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Changes per kind across all diffs.",
+          "title": "Diff Kinds",
+          "type": "object"
+        }
+      },
+      "required": [
+        "sources",
+        "documents",
+        "published_documents",
+        "units",
+        "lineages",
+        "revisions",
+        "vectors",
+        "statuses",
+        "diff_kinds"
+      ],
+      "title": "SnapshotStats",
+      "type": "object"
+    },
+    "SourceKind": {
+      "description": "Supported origin categories for imported knowledge.",
+      "enum": [
+        "url",
+        "file",
+        "repository",
+        "manual"
+      ],
+      "title": "SourceKind",
+      "type": "string"
+    },
+    "SourceView": {
+      "additionalProperties": false,
+      "description": "A source, all of its document versions, and how its head moved.",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/SourceKind"
+        },
+        "uri": {
+          "description": "Path relative to the export root for file sources.",
+          "title": "Uri",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Title"
+        },
+        "head_document_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Head Document Id"
+        },
+        "documents": {
+          "items": {
+            "$ref": "#/$defs/DocumentView"
+          },
+          "title": "Documents",
+          "type": "array"
+        },
+        "timeline": {
+          "items": {
+            "$ref": "#/$defs/PublicationView"
+          },
+          "title": "Timeline",
+          "type": "array"
+        },
+        "diffs": {
+          "items": {
+            "$ref": "#/$defs/DiffView"
+          },
+          "title": "Diffs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "uri",
+        "title",
+        "head_document_id",
+        "documents",
+        "timeline",
+        "diffs"
+      ],
+      "title": "SourceView",
+      "type": "object"
+    },
+    "StoryStep": {
+      "additionalProperties": false,
+      "description": "A narrated step of a scripted scenario, aligned with an event time.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "title",
+        "description"
+      ],
+      "title": "StoryStep",
+      "type": "object"
+    },
+    "TimepointView": {
+      "additionalProperties": false,
+      "description": "Statuses of every unit version published at ``at`` (the as-of view).",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "head_document_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Head Document Ids",
+          "type": "array"
+        },
+        "effective_unit_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Effective Unit Ids",
+          "type": "array"
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "statuses": {
+          "additionalProperties": {
+            "$ref": "#/$defs/KnowledgeUnitStatus"
+          },
+          "description": "Status per unit id; unit versions published later are absent.",
+          "title": "Statuses",
+          "type": "object"
+        }
+      },
+      "required": [
+        "at",
+        "head_document_ids",
+        "effective_unit_ids",
+        "counts",
+        "statuses"
+      ],
+      "title": "TimepointView",
+      "type": "object"
+    },
+    "UnitChangeKind": {
+      "description": "How one knowledge unit changed between two document versions.",
+      "enum": [
+        "added",
+        "modified",
+        "moved",
+        "unchanged",
+        "removed"
+      ],
+      "title": "UnitChangeKind",
+      "type": "string"
+    },
+    "UnitChangeView": {
+      "additionalProperties": false,
+      "description": "One unit-level change between two consecutive head versions.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/UnitChangeKind"
+        },
+        "lineage_id": {
+          "format": "uuid",
+          "title": "Lineage Id",
+          "type": "string"
+        },
+        "old_unit_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Old Unit Id"
+        },
+        "new_unit_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "New Unit Id"
+        },
+        "similarity": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Similarity",
+          "type": "number"
+        },
+        "needs_embedding": {
+          "title": "Needs Embedding",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "lineage_id",
+        "old_unit_id",
+        "new_unit_id",
+        "similarity",
+        "needs_embedding"
+      ],
+      "title": "UnitChangeView",
+      "type": "object"
+    },
+    "UnitView": {
+      "additionalProperties": false,
+      "description": "One stored knowledge unit version and its current status.",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "lineage_id": {
+          "format": "uuid",
+          "title": "Lineage Id",
+          "type": "string"
+        },
+        "ordinal": {
+          "minimum": 0,
+          "title": "Ordinal",
+          "type": "integer"
+        },
+        "start_char": {
+          "description": "Inclusive offset into the document content.",
+          "minimum": 0,
+          "title": "Start Char",
+          "type": "integer"
+        },
+        "end_char": {
+          "description": "Exclusive offset into the document content.",
+          "title": "End Char",
+          "type": "integer"
+        },
+        "heading": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Heading"
+        },
+        "section_path": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Section Path",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KnowledgeUnitStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Current status; null when the document version was never published."
+        },
+        "stale_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stale Reason"
+        }
+      },
+      "required": [
+        "id",
+        "lineage_id",
+        "ordinal",
+        "start_char",
+        "end_char",
+        "heading",
+        "section_path",
+        "text",
+        "content_hash",
+        "status"
+      ],
+      "title": "UnitView",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Everything the demo site renders, exported from one knowledge library.",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Time of the latest event in the library.",
+      "title": "As Of"
+    },
+    "stats": {
+      "$ref": "#/$defs/SnapshotStats"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceView"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "lineages": {
+      "items": {
+        "$ref": "#/$defs/LineageView"
+      },
+      "title": "Lineages",
+      "type": "array"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/EventView"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "timepoints": {
+      "items": {
+        "$ref": "#/$defs/TimepointView"
+      },
+      "title": "Timepoints",
+      "type": "array"
+    },
+    "story": {
+      "items": {
+        "$ref": "#/$defs/StoryStep"
+      },
+      "title": "Story",
+      "type": "array"
+    }
+  },
+  "required": [
+    "title",
+    "as_of",
+    "stats",
+    "sources",
+    "lineages",
+    "events",
+    "timepoints"
+  ],
+  "title": "LibrarySnapshot",
+  "type": "object"
+}

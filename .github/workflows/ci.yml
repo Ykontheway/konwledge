@@ -42,6 +42,11 @@ jobs:
       - name: Test
         run: uv run pytest --cov=konwledge --cov-report=term-missing
 
+      - name: Demo snapshot is up to date
+        run: |
+          uv run knowledge demo build --force --workspace "$RUNNER_TEMP/demo"
+          uv run knowledge demo export --workspace "$RUNNER_TEMP/demo" --check
+
   lancedb:
     name: Optional LanceDB adapter
     runs-on: ubuntu-latest

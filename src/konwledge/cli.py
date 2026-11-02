@@ -13,8 +13,10 @@ import typer
 
 from konwledge import __version__
 from konwledge.application import ImportPathError, KnowledgeLibrary, KnowledgeUnitNotFoundError
+from konwledge.demo import DemoWorkspaceError, build_demo, export_demo
 from konwledge.domain import KnowledgeUnit
 from konwledge.lifecycle import DocumentNotFoundError, LifecycleTransitionError, UnitState
+from konwledge.snapshot import dump_schema, dump_snapshot
 from konwledge.storage import create_schema, create_session_factory, create_sqlite_engine
 
 DEFAULT_DATABASE = Path(".konwledge/knowledge.db")
@@ -152,9 +154,12 @@ def import_command(
         if result.diff is not None:
             line += f" | changes={result.diff.summary()} | re-embed={len(result.diff.affected)}"
         typer.echo(line)
+    reverted = sum(item.result.reverted for item in report.imported)
     typer.echo(
         f"Imported {len(report.imported)} file(s): {created_documents} document(s) and "
-        f"{created_units} unit(s) created; {len(report.skipped)} unsupported file(s) skipped."
+        f"{created_units} unit(s) created; "
+        + (f"{reverted} file(s) republished an earlier version; " if reverted else "")
+        + f"{len(report.skipped)} unsupported file(s) skipped."
     )
     for skipped in report.skipped:
         typer.echo(f"skipped: {skipped}")
@@ -357,6 +362,108 @@ def _mark(database: Path, unit_id: UUID, *, stale: bool, reason: str | None) -> 
     typer.echo(
         f"{status}: unit {unit_id} | lineage={revision.entity_id} rev {revision.revision} "
         f"at {revision.created_at.isoformat()}"
+    )
+
+
+demo_app = typer.Typer(
+    name="demo",
+    help="Build the scripted demo library and export its snapshot for the demo site.",
+    no_args_is_help=True,
+)
+app.add_typer(demo_app, name="demo")
+
+DEFAULT_DEMO_WORKSPACE = Path(".konwledge/demo")
+DEFAULT_SNAPSHOT_DIR = Path("demo")
+SNAPSHOT_FILE = "snapshot.json"
+SCHEMA_FILE = "snapshot.schema.json"
+
+WorkspaceOption = Annotated[
+    Path,
+    typer.Option(
+        "--workspace",
+        "-w",
+        help="Directory holding the demo database and working files.",
+        show_default=True,
+        file_okay=False,
+    ),
+]
+
+
+@demo_app.command("build")
+def demo_build_command(
+    workspace: WorkspaceOption = DEFAULT_DEMO_WORKSPACE,
+    force: Annotated[
+        bool, typer.Option("--force", help="Rebuild an existing demo workspace.")
+    ] = False,
+) -> None:
+    """Play the demo story into a fresh, deterministic library."""
+
+    try:
+        build = build_demo(workspace, force=force)
+    except DemoWorkspaceError as error:
+        _fail(str(error), code=2)
+    for result in build.steps:
+        line = f"{result.step.at.isoformat()} | {result.step.title} | {result.detail}"
+        if result.embedded or result.reused or result.deleted:
+            line += f" | embedded={result.embedded} reused={result.reused} deleted={result.deleted}"
+        typer.echo(line)
+    typer.echo(
+        f"Demo library built in {build.workspace} ({len(build.steps)} steps, "
+        f"{build.vectors} vectors in the index)."
+    )
+
+
+@demo_app.command("export")
+def demo_export_command(
+    workspace: WorkspaceOption = DEFAULT_DEMO_WORKSPACE,
+    output_dir: Annotated[
+        Path,
+        typer.Option(
+            "--output-dir",
+            "-o",
+            help=f"Directory for {SNAPSHOT_FILE} and {SCHEMA_FILE}.",
+            show_default=True,
+            file_okay=False,
+        ),
+    ] = DEFAULT_SNAPSHOT_DIR,
+    check: Annotated[
+        bool,
+        typer.Option("--check", help="Fail if the files on disk differ instead of writing."),
+    ] = False,
+) -> None:
+    """Export the demo snapshot and its JSON Schema."""
+
+    try:
+        snapshot = export_demo(workspace)
+    except DemoWorkspaceError as error:
+        _fail(str(error), code=2)
+    outputs = {
+        output_dir / SNAPSHOT_FILE: dump_snapshot(snapshot),
+        output_dir / SCHEMA_FILE: dump_schema(),
+    }
+    if check:
+        stale = [
+            path
+            for path, text in outputs.items()
+            if not path.is_file() or path.read_bytes() != text.encode("utf-8")
+        ]
+        if stale:
+            names = ", ".join(str(path) for path in stale)
+            _fail(
+                f"demo snapshot is out of date: {names}. Regenerate with: "
+                "knowledge demo build --force && knowledge demo export"
+            )
+        typer.echo(f"Demo snapshot is up to date ({len(outputs)} files checked).")
+        return
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for path, text in outputs.items():
+        path.write_bytes(text.encode("utf-8"))
+        typer.echo(f"wrote {path}")
+    stats = snapshot.stats
+    typer.echo(
+        f"schema v{snapshot.schema_version}: {stats.sources} source(s), "
+        f"{stats.documents} version(s), {stats.units} unit(s), {stats.lineages} lineage(s), "
+        f"{len(snapshot.timepoints)} time point(s)"
     )
 
 
