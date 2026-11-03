@@ -5,6 +5,9 @@ __pycache__/
 build/
 dist/
 
+# Node (demo site)
+node_modules/
+
 # Environments
 .venv/
 .env
