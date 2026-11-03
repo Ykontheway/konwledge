@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. V1 starts the demo track: a scripted three-version story is played into a deterministic library, and `knowledge demo export` turns it into a versioned JSON snapshot (plus JSON Schema) that the upcoming static demo site will render. Two builds in different directories export byte-identical files, and CI fails when the committed snapshot drifts.
+> Status: pre-alpha. V2 adds a static demo site (`web/`) on top of the V1 snapshot. V1 started the demo track: a scripted three-version story is played into a deterministic library, and `knowledge demo export` turns it into a versioned JSON snapshot (plus JSON Schema) that the demo site renders. Two builds in different directories export byte-identical files, and CI fails when the committed snapshot drifts.
 
 ## Implemented increments
 
@@ -19,8 +19,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U09 | 2026-10-29 | Unit-level document diff, stable lineages, append-only revision chains, partial index rebuilds, `knowledge history`, and U08 LanceDB hardening |
 | U10 | 2026-10-30 | Publication timeline, `active`/`stale`/`superseded`/`deleted` statuses, as-of snapshots, revert handling, `knowledge asof`/`stale`/`refresh`/`reconcile` |
 | V1 | 2026-11-02 | Demo corpus and story, deterministic `knowledge demo build`, `knowledge demo export` with a Pydantic snapshot model, JSON Schema, golden-file tests, and a CI drift check |
+| V2 | 2026-11-03 | Static demo site in `web/` (Vite, React, TypeScript, Tailwind): overview, traceability, and version-diff pages rendered from the snapshot; types generated from the JSON Schema; Vitest; GitHub Pages workflow |
 
-Each increment builds on the previous branch, so the V1 branch contains the complete U01-U10 and V1 implementation. `U` slices grow the core library; `V` slices build the read-only demo site on top of it.
+Each increment builds on the previous branch, so the V2 branch contains the complete U01-U10, V1, and V2 implementation. `U` slices grow the core library; `V` slices build the read-only demo site on top of it.
 
 ## Why this project
 
@@ -98,6 +99,16 @@ uv run pytest --cov=konwledge --cov-report=term-missing
 uv run knowledge demo build --force && uv run knowledge demo export --check
 ```
 
+The demo site has its own CI job:
+
+```bash
+cd web
+pnpm install --frozen-lockfile
+pnpm check:types   # generated types match demo/snapshot.schema.json
+pnpm test          # Vitest: snapshot mapping and highlight ranges
+pnpm build         # tsc --noEmit && vite build
+```
+
 The optional LanceDB adapter has its own CI job. Run it locally with:
 
 ```bash
@@ -109,7 +120,9 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 
 ```text
 .
-├── .github/workflows/ci.yml
+├── .github/workflows/
+│   ├── ci.yml
+│   └── deploy-demo.yml
 ├── src/konwledge/
 │   ├── domain/
 │   │   ├── __init__.py
@@ -164,6 +177,12 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   ├── getting-started.md
 │   └── lifecycle.txt
 ├── tests/
+├── web/                     # static demo site (V2)
+│   ├── scripts/gen-types.mjs
+│   └── src/
+│       ├── lib/             # snapshot views, code-point slicing, formatting (+ Vitest)
+│       ├── types/snapshot.gen.ts
+│       └── *Page.tsx
 ├── LICENSE
 ├── README.md
 └── pyproject.toml
@@ -435,6 +454,32 @@ The embedding numbers above come from a real `IndexingService` run during the bu
   files, validates the snapshot against the schema, and CI repeats the check through the CLI.
 
 See [demo/README.md](demo/README.md) for the snapshot layout.
+
+## Demo site
+
+`web/` is a static Vite + React + TypeScript + Tailwind site that renders `demo/snapshot.json`
+(bundled at build time). It has no backend and re-implements no lifecycle rule.
+
+| Page | Shows | Backed by |
+| --- | --- | --- |
+| Overview | Source, version, unit, lineage, and revision counts; vector reuse across incremental updates | `stats`, `sources[].diffs[].embedding` |
+| Traceability | Document text and its units side by side; clicking a unit highlights its character range and mirrors `knowledge show` | `sources[].documents[]` |
+| Version diff | Unit-level changes between consecutive versions, colored by the five kinds, with re-embedded/reused vectors | `sources[].diffs[]`, `lineages[]` |
+
+```bash
+cd web
+pnpm install
+pnpm dev           # http://localhost:5173
+pnpm gen:types     # regenerate src/types/snapshot.gen.ts after a schema change
+```
+
+- **Typed by the schema.** `src/types/snapshot.gen.ts` is generated from `demo/snapshot.schema.json`;
+  CI fails when it drifts.
+- **Ranges match the CLI.** Snapshot offsets are Python code points, so the site slices by code
+  point, not UTF-16 unit; Vitest checks that every unit's range reproduces its stored text and that
+  the segments tile each document exactly.
+- **Deployed by Actions.** `.github/workflows/deploy-demo.yml` builds `web/` and publishes it to
+  GitHub Pages on every push to `main` (enable *Settings → Pages → Source: GitHub Actions* once).
 
 ## License
 

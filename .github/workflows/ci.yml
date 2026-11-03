@@ -47,6 +47,41 @@ jobs:
           uv run knowledge demo build --force --workspace "$RUNNER_TEMP/demo"
           uv run knowledge demo export --workspace "$RUNNER_TEMP/demo" --check
 
+  web:
+    name: Demo site
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Snapshot types match the JSON Schema
+        run: pnpm check:types
+
+      - name: Test
+        run: pnpm test
+
+      - name: Type check and build
+        run: pnpm build
+
   lancedb:
     name: Optional LanceDB adapter
     runs-on: ubuntu-latest
