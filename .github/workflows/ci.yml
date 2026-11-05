@@ -73,14 +73,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Snapshot types match the JSON Schema
-        run: pnpm check:types
-
-      - name: Test
-        run: pnpm test
-
-      - name: Type check and build
-        run: pnpm build
+      - name: Verify demo types, tests, and production build
+        run: pnpm verify
 
   lancedb:
     name: Optional LanceDB adapter

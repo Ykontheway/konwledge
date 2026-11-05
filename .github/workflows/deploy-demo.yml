@@ -30,11 +30,11 @@ jobs:
         with:
           version: 12
 
-      - name: Build Web
+      - name: Verify and build Web before publishing
         working-directory: web
         run: |
           pnpm install --frozen-lockfile
-          pnpm build
+          pnpm verify
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
