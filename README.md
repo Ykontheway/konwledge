@@ -104,10 +104,15 @@ The demo site has its own CI job:
 ```bash
 cd web
 pnpm install --frozen-lockfile
-pnpm check:types   # generated types match demo/snapshot.schema.json
-pnpm test          # Vitest: snapshot mapping and highlight ranges
-pnpm build         # tsc --noEmit && vite build
+pnpm verify        # typecheck → schema sync → Vitest → production build
 ```
+
+Both the CI job and the Pages deployment run `pnpm verify`; publishing stops if any
+check fails. Keep `strict`, `noUnusedLocals`, and `noUnusedParameters` enabled. During
+page development, run `pnpm typecheck` after each component change, then `pnpm verify`
+before committing. Vitest covers snapshot mapping, Unicode highlight ranges, and
+server-rendering smoke tests for the three demo pages; it does not replace browser
+interaction or visual testing.
 
 The optional LanceDB adapter has its own CI job. Run it locally with:
 

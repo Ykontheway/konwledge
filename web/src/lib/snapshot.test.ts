@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { snapshot } from "../data";
-import { segmentDocument, unitRangeText, SnapshotIndex } from "./snapshot";
+import { segmentDocument, unitRangeText, SnapshotIndex, type UnitView } from "./snapshot";
 import { codePoints } from "./text";
 
 describe("Snapshot Data Mapping", () => {
@@ -47,9 +47,20 @@ describe("Snapshot Data Mapping", () => {
 
   it("should handle Unicode code points correctly (Emoji test)", () => {
     const text = "Hello 🚀 World"; // Rocket is surrogate pair in UTF-16
-    const units = [
-      { id: "1", start_char: 6, end_char: 7, text: "🚀", ordinal: 0, section_path: [], content_hash: "", status: "active" as const }
-    ] as any;
+    const units: UnitView[] = [
+      {
+        id: "1",
+        lineage_id: "L1",
+        start_char: 6,
+        end_char: 7,
+        text: "🚀",
+        ordinal: 0,
+        section_path: [],
+        heading: null,
+        content_hash: "",
+        status: "active",
+      },
+    ];
     
     const segments = segmentDocument(text, units);
     expect(segments.length).toBe(3);
