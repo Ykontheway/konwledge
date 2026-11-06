@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. V2 adds a static demo site (`web/`) on top of the V1 snapshot. V1 started the demo track: a scripted three-version story is played into a deterministic library, and `knowledge demo export` turns it into a versioned JSON snapshot (plus JSON Schema) that the demo site renders. Two builds in different directories export byte-identical files, and CI fails when the committed snapshot drifts.
+> Status: pre-alpha. U11 adds configurable freshness policies, dry-run/apply stale scans, and an active-only publication API. The demo frontend is paused at V2; this increment changes only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
 
 ## Implemented increments
 
@@ -20,8 +20,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U10 | 2026-10-30 | Publication timeline, `active`/`stale`/`superseded`/`deleted` statuses, as-of snapshots, revert handling, `knowledge asof`/`stale`/`refresh`/`reconcile` |
 | V1 | 2026-11-02 | Demo corpus and story, deterministic `knowledge demo build`, `knowledge demo export` with a Pydantic snapshot model, JSON Schema, golden-file tests, and a CI drift check |
 | V2 | 2026-11-03 | Static demo site in `web/` (Vite, React, TypeScript, Tailwind): overview, traceability, and version-diff pages rendered from the snapshot; types generated from the JSON Schema; Vitest; GitHub Pages workflow |
+| U11 | 2026-11-06 | Source-scoped TTL and known source-update policies; append-only configuration; atomic dry-run/apply stale scans; active-only publication API and CLI; controlled-clock regression tests |
 
-Each increment builds on the previous branch, so the V2 branch contains the complete U01-U10, V1, and V2 implementation. `U` slices grow the core library; `V` slices build the read-only demo site on top of it.
+Each increment builds on the preceding implementation. This branch contains U01-U11, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
 
 ## Why this project
 
@@ -414,7 +415,77 @@ print(snapshot.counts())  # {'active': 3, 'stale': 0, 'superseded': 2, 'deleted'
 library.lifecycle.mark_stale(unit_id, reason="uv flags changed")
 ```
 
-Time-based freshness policies that create stale marks automatically are planned for U11.
+## Freshness policies
+
+U11 builds on U10's explicit `stale`/`refresh` revisions. A `FreshnessPolicy` is configured
+per source and stored as an append-only `freshness_policy` source revision, so configuration
+survives restarts and historical scans read the policy that existed at that time. No new
+SQLite columns or demo schema changes are required.
+
+| Rule | When it flags a current head unit |
+| --- | --- |
+| `ttl_expired` | Scan time is at or after the last content confirmation plus `ttl_seconds` |
+| `source_updated` | A supplied source-update time has arrived and is later than both head publication and the lineage's last review |
+
+The TTL reference is the lineage's latest `added`, `modified`, or `refreshed` revision.
+Moving a unit or carrying identical content into a new version does **not** renew its TTL.
+A revert renews only lineages whose content actually changes. Older histories without these
+revisions fall back to the head publication time. Timestamps must be timezone-aware; the
+boundary is inclusive (`checked_at >= expires_at`), and a CLI day is exactly 86,400 seconds.
+Deadlines are computed in UTC so daylight-saving transitions do not shorten or lengthen the
+TTL. Unsupported intervals/deadlines are rejected with a validation error rather than overflowing.
+
+```bash
+uv run knowledge list                         # includes source UUIDs
+uv run knowledge freshness configure <source-id> --ttl-days 30
+uv run knowledge freshness show <source-id>
+uv run knowledge freshness scan               # preview; does not write stale marks
+uv run knowledge freshness scan --apply       # append marks atomically
+uv run knowledge publishable                  # only active head units
+uv run knowledge publishable --include-stale  # opt in to stale knowledge
+uv run knowledge refresh <unit-id> --reason "reviewed against source"
+uv run knowledge freshness configure <source-id> --disable
+```
+
+A configuration command replaces the whole policy. To keep both rules, supply both
+`--ttl-days` and `--source-updated-at`, for example:
+
+```bash
+uv run knowledge freshness configure <source-id> --ttl-days 30 \
+  --source-updated-at 2026-11-06T12:00:00+08:00
+uv run knowledge freshness scan --source <source-id> \
+  --at 2026-11-06T13:00:00+08:00                 # historical preview only
+```
+
+Source-update times are **known inputs**, not a filesystem watcher, HTTP poller, or automatic
+external-source synchronization. Future update times do not flag units until that time arrives.
+An empty/disabled policy skips scanning; it does not clear existing stale marks. Review those
+units with `refresh`. Already-stale units are not marked twice, and retired/unpublished versions
+are never scanned. Stale marks retain the rule codes, TTL reference/deadline, and applied policy
+in their revision payload.
+
+Applying a scan writes all marks and cached statuses in one transaction, at the observed scan
+time rather than backdating them to the TTL deadline. This preserves earlier as-of answers.
+`--at` is read-only and cannot be combined with `--apply`; a regressing clock is rejected.
+No background task runs by itself: schedule the CLI externally if periodic scans are wanted.
+
+```python
+from konwledge.domain import FreshnessPolicy
+
+library.freshness.configure(source_id, FreshnessPolicy(ttl_seconds=30 * 86400))
+preview = library.freshness.scan()  # dry_run=True by default
+expired = [item for item in preview.decisions if item.expired]
+applied = library.freshness.scan(dry_run=False)
+ready = library.publishable_units()  # active only
+historical = library.publishable_units(at=aware_datetime)
+```
+
+`KnowledgeSnapshot.effective_units` still includes active **and stale** head units for U10
+compatibility. `publishable_units` is the new active-only boundary for future retrieval/context
+assembly. U11 does not automatically filter the lower-level `VectorIndex` or implement the U13
+retrieval pipeline. The controlled-clock tests cover deadlines, review/updates/reverts, policy
+history, dry-run/apply, batch rollback, CLI validation, and historical publication filtering.
+
 
 ## Demo snapshot
 

@@ -27,6 +27,7 @@ from konwledge.ingestion import (
     TraceableTextSplitter,
 )
 from konwledge.lifecycle import (
+    FreshnessService,
     KnowledgeSnapshot,
     KnowledgeUnitNotFoundError,
     LifecycleService,
@@ -184,12 +185,33 @@ class KnowledgeLibrary:
             ),
         )
         self._lifecycle = LifecycleService(session_factory, id_factory=id_factory, clock=clock)
+        self._freshness = FreshnessService(session_factory, id_factory=id_factory, clock=clock)
 
     @property
     def lifecycle(self) -> LifecycleService:
         """Status queries, as-of snapshots, and explicit stale/refresh marks."""
 
         return self._lifecycle
+
+    @property
+    def freshness(self) -> FreshnessService:
+        """Freshness policy configuration and automated stale scans."""
+
+        return self._freshness
+
+    def publishable_units(
+        self, at: datetime | None = None, *, include_stale: bool = False
+    ) -> tuple[UnitState, ...]:
+        """Return units that are ready for retrieval at ``at``.
+
+        By default only ``active`` units are returned. With ``include_stale``
+        units marked as ``stale`` (e.g. by a freshness scan) are included too.
+        """
+
+        snapshot = self.snapshot(at)
+        if include_stale:
+            return snapshot.effective_units
+        return snapshot.publishable_units
 
     def import_path(self, target: Path) -> ImportReport:
         """Import every supported target file in stable order."""

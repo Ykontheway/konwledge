@@ -90,6 +90,13 @@ class KnowledgeSnapshot:
     def effective_units(self) -> tuple[UnitState, ...]:
         return tuple(state for snapshot in self.sources for state in snapshot.units)
 
+    @property
+    def publishable_units(self) -> tuple[UnitState, ...]:
+        """Units that are currently active (not stale, superseded, or deleted)."""
+        return tuple(
+            state for state in self.effective_units if state.status is KnowledgeUnitStatus.ACTIVE
+        )
+
     def counts(self) -> dict[str, int]:
         """Number of unit versions per status, including retired ones when loaded."""
 

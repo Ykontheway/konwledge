@@ -1,5 +1,6 @@
 """Domain models for versioned knowledge."""
 
+from konwledge.domain.freshness import FreshnessPolicy
 from konwledge.domain.models import (
     Citation,
     Document,
@@ -17,6 +18,7 @@ __all__ = [
     "Citation",
     "Document",
     "DocumentContentType",
+    "FreshnessPolicy",
     "KnowledgeUnit",
     "KnowledgeUnitStatus",
     "Revision",
