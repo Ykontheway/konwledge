@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U11 adds configurable freshness policies, dry-run/apply stale scans, and an active-only publication API. The demo frontend is paused at V2; this increment changes only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
+> Status: pre-alpha. U13 adds lifecycle-aware FTS5/vector retrieval and RRF fusion, following U12's deterministic conflict candidates and review audit chain. The demo frontend remains paused at V2; these increments change only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
 
 ## Implemented increments
 
@@ -21,8 +21,10 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | V1 | 2026-11-02 | Demo corpus and story, deterministic `knowledge demo build`, `knowledge demo export` with a Pydantic snapshot model, JSON Schema, golden-file tests, and a CI drift check |
 | V2 | 2026-11-03 | Static demo site in `web/` (Vite, React, TypeScript, Tailwind): overview, traceability, and version-diff pages rendered from the snapshot; types generated from the JSON Schema; Vitest; GitHub Pages workflow |
 | U11 | 2026-11-06 | Source-scoped TTL and known source-update policies; append-only configuration; atomic dry-run/apply stale scans; active-only publication API and CLI; controlled-clock regression tests |
+| U12 | 2026-11-09 | Deterministic service-port conflict candidates, frozen two-sided evidence, atomic persistence, human review states and audit chain, historical preview and conflict CLI |
+| U13 | 2026-11-09 | Transactionally synchronized SQLite FTS5, vector retrieval, deterministic RRF fusion, active-only/source/as-of filtering, missing-vector diagnostics, and search CLI |
 
-Each increment builds on the preceding implementation. This branch contains U01-U11, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
+Each increment builds on the preceding implementation. This branch contains U01-U13, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
 
 ## Why this project
 
@@ -76,6 +78,7 @@ uv run knowledge list --database .konwledge/demo.db
 uv run knowledge show <unit-id-from-list> --database .konwledge/demo.db
 uv run knowledge history <unit-id-from-list> --database .konwledge/demo.db
 uv run knowledge asof --all --database .konwledge/demo.db
+uv run knowledge search "deployment" --database .konwledge/demo.db
 ```
 
 `import` accepts one `.md`, `.markdown`, or `.txt` file, or recursively discovers those formats in
@@ -553,6 +556,86 @@ uv run knowledge conflicts scan -d .konwledge/demo/knowledge.db
 This finds exactly the current guide's active `8080` assertion versus the FAQ's stale `8000`
 assertion, with both original quotes and offsets. Old guide versions are not treated as
 current contradictory evidence. The static frontend and demo snapshot remain unchanged.
+
+## Hybrid retrieval
+
+U13 adds `library.search(...)` and `library.retrieval` with three explicit modes:
+
+| Mode | Candidate routes | Configuration |
+| --- | --- | --- |
+| `lexical` (default) | SQLite FTS5, ordered by BM25 | No model or vector index required |
+| `vector` | Exact cosine over eligible stored vectors | An injected `IndexingService` |
+| `hybrid` | Both routes, merged with reciprocal rank fusion | An injected `IndexingService` |
+
+The default query scope is **active published head units only**. `--include-stale` opts into
+stale head units, and `--source` restricts the source UUID. Eligibility is resolved from the
+publication/revision log at one timezone-aware time, before either route's candidate limit.
+Cached vector status or text never controls eligibility or result evidence. Superseded,
+deleted, and unpublished versions are excluded; `--at` selects the head that existed then.
+The hit's top-level `status` is authoritative for the requested time; its nested `unit.status`
+is the persisted current cache and may differ in a historical answer.
+
+```bash
+uv run knowledge search "order-service"                    # full-text, active only
+uv run knowledge search "服务端口" --include-stale
+uv run knowledge search "监听" --at 2026-10-10T12:00:00+08:00
+uv run knowledge search "deployment" --top-k 3 --candidate-limit 20 --json
+uv run knowledge search "port" --source <source-id>
+uv run knowledge search "order-service" --mode hybrid --demo-vectors
+```
+
+The standalone CLI has no production embedding provider configured. `--demo-vectors` builds
+an **ephemeral hash-vector index** of stored versions, does not write it to disk, and warns on
+stderr that hash embeddings test the retrieval pipeline rather than semantic quality.
+Without that flag or an injected SDK index, `vector` and `hybrid` fail explicitly rather than
+silently switching to full-text. Normal search is read-only: it does not embed the corpus,
+write revisions, change statuses, repair vectors, or modify the original index. Opening the
+CLI still performs the existing additive schema initialization.
+
+RRF scores are `sum(1 / (rrf_k + route_rank))`, with 1-based ranks and `rrf_k=60` by default.
+Each unit counts at most once per route; ties are broken by UUID. Raw BM25 and cosine scores
+are diagnostic fields, not quantities added together or confidence probabilities. Single-route
+search uses the same rank-derived score. `candidate_limit` defaults to `max(50, top_k)`, applies
+to each route, and must be at least `top_k`.
+
+FTS5 indexes every stored unit version. Insert/text-update/delete triggers synchronize it in
+the same SQLite transaction; existing libraries are backfilled on initialization. CJK text is
+split into single-character tokens, with contiguous CJK query runs compiled as phrases. Other
+terms are quoted and combined with AND, so user input is literal text, not FTS operators or
+SQL. This supports short Chinese substrings without an extra dependency, but does not provide
+Chinese linguistic segmentation, stemming, synonym expansion, or general semantic matching.
+Writes through raw SQLite connections must register `knowledge_fts_text`; use the supplied
+`create_sqlite_engine` for normal writes. A SQLite build without FTS5 fails with a clear error.
+
+For a small local library, vector retrieval fetches eligible records and performs an exact
+cosine scan in a temporary in-memory index. This avoids retired/stale vectors crowding out
+valid candidates, but is O(N) over eligible units, not a large-scale ANN solution. U09 still
+removes old-version vectors on incremental updates. Missing vectors or conflicting stored
+content hashes are exposed in `missing_vector_ids` and `result.degraded`; hybrid can still
+return historical FTS evidence, while the CLI warns that vector recall is incomplete. Provider
+or backend failures are not silently treated as missing coverage. Callers must use the same
+embedding provider/model for stored vectors and queries.
+
+```python
+from konwledge.application import KnowledgeLibrary
+from konwledge.retrieval import RetrievalMode
+
+# `indexing` is an IndexingService using your provider and a Memory/Lance VectorIndex.
+# Populate it explicitly with index_units/rebuild/apply_diff; import does not auto-index.
+library = KnowledgeLibrary(session_factory, indexing_service=indexing)
+result = library.search("deployment port", mode=RetrievalMode.HYBRID, top_k=5)
+for hit in result.hits:
+    print(hit.unit.text, hit.source.uri, hit.unit.start_char, hit.unit.end_char)
+    print(hit.lexical_rank, hit.vector_rank, hit.score)
+if result.degraded:
+    print("Missing usable vectors:", result.missing_vector_ids)
+```
+
+Results preserve original units, source/document/lineage IDs, section paths and character
+ranges, along with resolved status, route ranks and raw scores. `--json` emits the complete
+result on stdout; diagnostics stay on stderr. U13 does not generate answers, create citations,
+assemble model context, resolve conflicts, or apply evaluation gates; those remain later slices.
+The static frontend and V1 snapshot contract are unchanged.
 
 ## Demo snapshot
 

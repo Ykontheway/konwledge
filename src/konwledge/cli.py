@@ -9,19 +9,21 @@ from pathlib import Path
 from typing import Annotated, NoReturn
 from uuid import UUID
 
-import click
 import typer
 
 from konwledge import __version__
 from konwledge.application import ImportPathError, KnowledgeLibrary, KnowledgeUnitNotFoundError
 from konwledge.demo import DemoWorkspaceError, build_demo, export_demo
 from konwledge.domain import ConflictStatus, FreshnessPolicy, KnowledgeUnit
+from konwledge.embedding import EmbeddingService, HashEmbeddingProvider
+from konwledge.indexing import IndexingService, InMemoryVectorIndex
 from konwledge.lifecycle import (
     DocumentNotFoundError,
     LifecycleTransitionError,
     SourceNotFoundError,
     UnitState,
 )
+from konwledge.retrieval import RetrievalMode, RetrievalService
 from konwledge.snapshot import dump_schema, dump_snapshot
 from konwledge.storage import create_schema, create_session_factory, create_sqlite_engine
 
@@ -169,6 +171,126 @@ def import_command(
     )
     for skipped in report.skipped:
         typer.echo(f"skipped: {skipped}")
+
+
+@app.command("search")
+def search_command(
+    query: Annotated[str, typer.Argument(help="Literal search text (not raw FTS syntax).")],
+    mode: Annotated[
+        RetrievalMode, typer.Option("--mode", help="Retrieval route.")
+    ] = RetrievalMode.LEXICAL,
+    top_k: Annotated[int, typer.Option("--top-k", min=1, help="Maximum results.")] = 5,
+    candidate_limit: Annotated[int | None, typer.Option("--candidate-limit", min=1)] = None,
+    rrf_k: Annotated[int, typer.Option("--rrf-k", min=1)] = 60,
+    at: AtOption = None,
+    include_stale: Annotated[
+        bool, typer.Option("--include-stale", help="Also search stale head units.")
+    ] = False,
+    source_id: Annotated[
+        UUID | None, typer.Option("--source", help="Restrict to a source UUID.")
+    ] = None,
+    demo_vectors: Annotated[
+        bool,
+        typer.Option(
+            "--demo-vectors", help="Build temporary offline hash vectors; not semantic embeddings."
+        ),
+    ] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the complete result as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Search eligible knowledge, keeping the original evidence and route ranks."""
+
+    moment = _parse_time(at)
+    if not query.strip():
+        _fail("query must contain non-whitespace content", code=2)
+    if candidate_limit is not None and candidate_limit < top_k:
+        _fail("candidate_limit must be greater than or equal to top_k", code=2)
+    if demo_vectors and mode is RetrievalMode.LEXICAL:
+        _fail("--demo-vectors requires --mode vector or hybrid", code=2)
+    library = _open_library(database)
+    search = library.search
+    if demo_vectors:
+        typer.echo(
+            "Warning: demo hash embeddings test retrieval plumbing, not semantic quality. "
+            "Vectors are temporary and are not persisted.",
+            err=True,
+        )
+        provider = HashEmbeddingProvider()
+        indexing = IndexingService(
+            embedding_service=EmbeddingService(provider),
+            vector_index=InMemoryVectorIndex(dimension=provider.dimension),
+        )
+        # Explicit demo setup, separate from the read-only retrieval service.
+        # Historical versions remain searchable without changing U09's index policy.
+        indexing.index_units(
+            [unit for summary in library.list_documents() for unit in summary.units]
+        )
+        engine = create_sqlite_engine(
+            f"sqlite+pysqlite:///{database.expanduser().resolve().as_posix()}"
+        )
+        try:
+            search = RetrievalService(
+                create_session_factory(engine), indexing_service=indexing
+            ).search
+            result = search(
+                query,
+                mode=mode,
+                top_k=top_k,
+                candidate_limit=candidate_limit,
+                rrf_k=rrf_k,
+                at=moment,
+                include_stale=include_stale,
+                source_id=source_id,
+            )
+        except (ValueError, RuntimeError) as error:
+            _fail(str(error), code=2)
+        finally:
+            engine.dispose()
+    else:
+        try:
+            result = search(
+                query,
+                mode=mode,
+                top_k=top_k,
+                candidate_limit=candidate_limit,
+                rrf_k=rrf_k,
+                at=moment,
+                include_stale=include_stale,
+                source_id=source_id,
+            )
+        except ValueError as error:
+            _fail(str(error), code=2)
+        except RuntimeError as error:
+            _fail(str(error))
+
+    if result.degraded:
+        typer.echo(
+            f"Warning: {len(result.missing_vector_ids)} eligible unit(s) lack usable vectors; "
+            "vector recall is incomplete. missing_vector_ids="
+            + ",".join(str(unit_id) for unit_id in result.missing_vector_ids),
+            err=True,
+        )
+    if json_output:
+        typer.echo(result.model_dump_json(indent=2))
+        return
+    typer.echo(
+        f"Search: mode={result.mode.value} hits={len(result.hits)} "
+        f"at={result.evaluated_at.isoformat()} degraded={str(result.degraded).lower()}"
+    )
+    if not result.hits:
+        typer.echo("No matching knowledge found.")
+    for rank, hit in enumerate(result.hits, start=1):
+        typer.echo(
+            f"{rank}. unit={hit.unit.id} status={hit.status.value} score={hit.score:.8f} "
+            f"lexical_rank={hit.lexical_rank} vector_rank={hit.vector_rank}"
+        )
+        typer.echo(
+            f"   source={hit.source.uri} document={hit.document.id} lineage={hit.unit.lineage_id} "
+            f"range=[{hit.unit.start_char}, {hit.unit.end_char}) section={_section(hit.unit)}"
+        )
+        typer.echo(hit.unit.text)
 
 
 @app.command("list")
@@ -784,16 +906,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI, returning an exit code for console and direct callers."""
 
     try:
-        # With standalone_mode=False Click *returns* the code of typer.Exit
-        # instead of raising it, so the return value carries failures too.
-        result = app(
+        # Let Typer handle its own Click implementation and usage exceptions.
+        # Console and direct callers receive the same formatted errors and code.
+        app(
             args=None if argv is None else list(argv),
             prog_name="knowledge",
-            standalone_mode=False,
+            standalone_mode=True,
         )
-    except click.exceptions.Exit as error:  # pragma: no cover - defensive
-        return error.exit_code
-    except click.ClickException as error:
-        error.show()
-        return error.exit_code
-    return result if isinstance(result, int) else 0
+    except SystemExit as error:
+        return error.code if isinstance(error.code, int) else (0 if error.code is None else 1)
+    return 0
