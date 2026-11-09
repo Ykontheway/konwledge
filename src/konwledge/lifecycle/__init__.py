@@ -8,6 +8,12 @@ from konwledge.lifecycle.diff import (
     diff_by_lineage,
     diff_units,
 )
+from konwledge.lifecycle.freshness import (
+    FreshnessDecision,
+    FreshnessScan,
+    FreshnessService,
+    SourceNotFoundError,
+)
 from konwledge.lifecycle.revisions import initial_revisions, revisions_for_diff
 from konwledge.lifecycle.service import (
     DocumentNotFoundError,
@@ -36,11 +42,15 @@ __all__ = [
     "EFFECTIVE_STATUSES",
     "DocumentDiff",
     "DocumentNotFoundError",
+    "FreshnessDecision",
+    "FreshnessScan",
+    "FreshnessService",
     "KnowledgeSnapshot",
     "KnowledgeUnitNotFoundError",
     "LifecycleService",
     "LifecycleTransitionError",
     "Publication",
+    "SourceNotFoundError",
     "SourceSnapshot",
     "UnitChange",
     "UnitChangeKind",

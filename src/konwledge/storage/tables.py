@@ -138,3 +138,41 @@ class CitationRow(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSON, nullable=False, default=dict
     )
+
+
+class ConflictRow(Base):
+    __tablename__ = "conflicts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["left_document_id", "left_source_id"],
+            ["documents.id", "documents.source_id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["right_document_id", "right_source_id"],
+            ["documents.id", "documents.source_id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["left_unit_id", "left_document_id"],
+            ["knowledge_units.id", "knowledge_units.document_id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["right_unit_id", "right_document_id"],
+            ["knowledge_units.id", "knowledge_units.document_id"],
+            ondelete="RESTRICT",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    detected_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    left_source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    left_document_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    left_unit_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    right_source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    right_document_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    right_unit_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)

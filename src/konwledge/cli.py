@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -14,8 +15,13 @@ import typer
 from konwledge import __version__
 from konwledge.application import ImportPathError, KnowledgeLibrary, KnowledgeUnitNotFoundError
 from konwledge.demo import DemoWorkspaceError, build_demo, export_demo
-from konwledge.domain import KnowledgeUnit
-from konwledge.lifecycle import DocumentNotFoundError, LifecycleTransitionError, UnitState
+from konwledge.domain import ConflictStatus, FreshnessPolicy, KnowledgeUnit
+from konwledge.lifecycle import (
+    DocumentNotFoundError,
+    LifecycleTransitionError,
+    SourceNotFoundError,
+    UnitState,
+)
 from konwledge.snapshot import dump_schema, dump_snapshot
 from konwledge.storage import create_schema, create_session_factory, create_sqlite_engine
 
@@ -185,6 +191,7 @@ def list_command(database: DatabaseOption = DEFAULT_DATABASE) -> None:
             version = "unpublished"
         typer.echo(f"  version: {version}")
         typer.echo(f"  source: {summary.source.kind.value} {summary.source.uri}")
+        typer.echo(f"  source id: {summary.source.id}")
         typer.echo(f"  locator: {document.locator}")
         typer.echo(f"  fingerprint: {document.checksum}")
         typer.echo(f"  units: {len(summary.units)}")
@@ -220,6 +227,7 @@ def show_command(
     typer.echo(f"status: {_status_label(state)}{when}")
     typer.echo(f"document: {detail.document.id}")
     typer.echo(f"source: {detail.source.kind.value} {detail.source.uri}")
+    typer.echo(f"source id: {detail.source.id}")
     typer.echo(f"locator: {detail.document.locator}")
     typer.echo(f"fingerprint: {detail.document.checksum}")
     typer.echo(f"section_path: {_section(unit)}")
@@ -362,6 +370,311 @@ def _mark(database: Path, unit_id: UUID, *, stale: bool, reason: str | None) -> 
     typer.echo(
         f"{status}: unit {unit_id} | lineage={revision.entity_id} rev {revision.revision} "
         f"at {revision.created_at.isoformat()}"
+    )
+
+
+conflicts_app = typer.Typer(
+    name="conflicts",
+    help="Detect contradictory knowledge and manage human reviews.",
+    no_args_is_help=True,
+)
+app.add_typer(conflicts_app, name="conflicts")
+
+
+@conflicts_app.command("scan")
+def conflicts_scan_command(
+    at: AtOption = None,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Write detected conflicts to the database.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Evaluate source heads and list (or apply) conflict candidates."""
+
+    library = _open_library(database)
+    moment = _parse_time(at)
+
+    try:
+        scan = library.conflicts.scan(at=moment, dry_run=not apply)
+    except ValueError as error:
+        _fail(str(error), code=2)
+
+    stored = {conflict.key: conflict for conflict in (*scan.existing, *scan.created)}
+    existing_keys = {conflict.key for conflict in scan.existing}
+    for candidate in scan.candidates:
+        conflict = stored.get(candidate.key)
+        prefix = (
+            "existing"
+            if candidate.key in existing_keys
+            else ("created" if conflict is not None else "candidate")
+        )
+        identity = "" if conflict is None else f" | id={conflict.id} status={conflict.status.value}"
+        typer.echo(
+            f"{prefix}: {candidate.rule} | key={candidate.key}{identity} | "
+            f"left={candidate.left.source_uri} [{candidate.left.value}] | "
+            f"right={candidate.right.source_uri} [{candidate.right.value}]"
+        )
+
+    typer.echo(
+        f"Scan complete: candidates={len(scan.candidates)} created={len(scan.created)} "
+        f"existing={len(scan.existing)} | at={scan.evaluated_at.isoformat()} | "
+        f"{'applied' if apply else 'dry run'}"
+    )
+
+
+@conflicts_app.command("list")
+def conflicts_list_command(
+    status: Annotated[
+        ConflictStatus | None, typer.Option("--status", help="Filter by current status.")
+    ] = None,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """List all detected conflicts."""
+
+    conflicts = _open_library(database).conflicts.list(status=status)
+    if not conflicts:
+        typer.echo("No conflicts found.")
+        return
+
+    for conflict in conflicts:
+        typer.echo(
+            f"{conflict.id} | {conflict.status.value:<10} | {conflict.rule} | "
+            f"{conflict.left.source_uri} vs {conflict.right.source_uri}"
+        )
+
+
+@conflicts_app.command("show")
+def conflicts_show_command(
+    conflict_id: Annotated[UUID, typer.Argument(help="Conflict UUID.")],
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show one conflict in JSON format."""
+
+    try:
+        conflict = _open_library(database).conflicts.get(conflict_id)
+    except LookupError as error:
+        _fail(str(error))
+
+    typer.echo(conflict.model_dump_json(indent=2))
+
+
+@conflicts_app.command("review")
+def conflicts_review_command(
+    conflict_id: Annotated[UUID, typer.Argument(help="Conflict UUID.")],
+    status: Annotated[
+        ConflictStatus, typer.Option("--status", help="New status for the conflict.")
+    ],
+    reason: Annotated[str, typer.Option("--reason", "-r", help="Why this status was chosen.")],
+    reviewer: Annotated[
+        str | None, typer.Option("--reviewer", help="Who performed the review.")
+    ] = None,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Record a human decision on a conflict candidate."""
+
+    try:
+        conflict = _open_library(database).conflicts.review(
+            conflict_id, status=status, reason=reason, reviewer=reviewer
+        )
+    except LookupError as error:
+        _fail(str(error))
+    except ValueError as error:
+        _fail(str(error), code=2)
+
+    typer.echo(f"reviewed: {conflict.id} status={conflict.status.value}")
+
+
+@conflicts_app.command("history")
+def conflicts_history_command(
+    conflict_id: Annotated[UUID, typer.Argument(help="Conflict UUID.")],
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show the revision chain of one conflict."""
+
+    try:
+        revisions = _open_library(database).conflicts.history(conflict_id)
+    except LookupError as error:
+        _fail(str(error))
+
+    typer.echo(f"conflict: {conflict_id}")
+    typer.echo(f"revisions: {len(revisions)}")
+    for revision in revisions:
+        change = revision.payload.get("change", "unknown")
+        typer.echo(
+            f"  rev {revision.revision} {revision.change_type.value} ({change}) "
+            f"at {revision.created_at.isoformat()}"
+        )
+        if change == "reviewed":
+            typer.echo(
+                f"    {revision.payload['from_status']} -> {revision.payload['to_status']} | "
+                f"reason={revision.payload['reason']} | reviewer={revision.payload.get('reviewer')}"
+            )
+        elif change == "detected":
+            typer.echo(f"    key={revision.payload['key']} | status={revision.payload['status']}")
+
+
+@app.command("publishable")
+def publishable_command(
+    at: AtOption = None,
+    include_stale: Annotated[
+        bool, typer.Option("--include-stale", help="Include units marked as stale.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """List knowledge units that are ready for retrieval."""
+
+    library = _open_library(database)
+    moment = _parse_time(at)
+    units = library.publishable_units(moment, include_stale=include_stale)
+    if not units:
+        if moment:
+            typer.echo(f"No publishable knowledge as of {moment.isoformat()}.")
+        else:
+            typer.echo("Knowledge library is empty or has no publishable units.")
+        return
+
+    for state in units:
+        typer.echo(f"unit {state.unit.id} status={state.status.value}")
+
+
+freshness_app = typer.Typer(
+    name="freshness",
+    help="Manage knowledge freshness policies and stale scans.",
+    no_args_is_help=True,
+)
+app.add_typer(freshness_app, name="freshness")
+
+
+@freshness_app.command("configure")
+def freshness_configure_command(
+    source_id: Annotated[UUID, typer.Argument(help="Source UUID.")],
+    ttl_days: Annotated[
+        int | None,
+        typer.Option("--ttl-days", help="Days before head units become stale (strictly positive)."),
+    ] = None,
+    source_updated_at: Annotated[
+        str | None,
+        typer.Option(
+            "--source-updated-at",
+            help="ISO 8601 time when source content changed; marks head stale.",
+        ),
+    ] = None,
+    disable: Annotated[
+        bool, typer.Option("--disable", help="Disable scanning without clearing stale marks.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Configure a freshness policy for one source."""
+
+    if disable and (ttl_days is not None or source_updated_at is not None):
+        _fail("--disable cannot be combined with other settings", code=2)
+    if not disable and ttl_days is None and source_updated_at is None:
+        _fail("one of --ttl-days, --source-updated-at, or --disable is required", code=2)
+    if ttl_days is not None and ttl_days <= 0:
+        _fail("--ttl-days must be a positive integer", code=2)
+
+    updated_at = None
+    if source_updated_at is not None:
+        try:
+            updated_at = datetime.fromisoformat(source_updated_at.strip())
+        except ValueError:
+            _fail(f"invalid --source-updated-at time {source_updated_at!r}", code=2)
+        if updated_at.tzinfo is None:
+            _fail("--source-updated-at must be timezone-aware (e.g. +08:00)", code=2)
+
+    try:
+        policy = (
+            FreshnessPolicy()
+            if disable
+            else FreshnessPolicy(
+                ttl_seconds=ttl_days * 86400 if ttl_days is not None else None,
+                source_updated_at=updated_at,
+            )
+        )
+    except ValueError as error:
+        _fail(str(error), code=2)
+
+    library = _open_library(database)
+    try:
+        revision = library.freshness.configure(source_id, policy)
+    except SourceNotFoundError as error:
+        _fail(str(error))
+    except ValueError as error:
+        _fail(str(error), code=2)
+
+    status = "disabled" if disable else "configured"
+    typer.echo(
+        f"freshness {status}: source {source_id} | rev {revision.revision} "
+        f"at {revision.created_at.isoformat()}"
+    )
+
+
+@freshness_app.command("show")
+def freshness_show_command(
+    source_id: Annotated[UUID, typer.Argument(help="Source UUID.")],
+    at: AtOption = None,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show the current or historical freshness policy of a source."""
+
+    library = _open_library(database)
+    moment = _parse_time(at)
+    try:
+        policy = library.freshness.policy(source_id, at=moment)
+    except SourceNotFoundError as error:
+        _fail(str(error))
+    except ValueError as error:
+        _fail(str(error), code=2)
+    if policy is None:
+        typer.echo(f"Source {source_id} has no freshness policy.")
+        return
+
+    typer.echo(json.dumps(policy.model_dump(mode="json"), indent=2))
+
+
+@freshness_app.command("scan")
+def freshness_scan_command(
+    source_id: Annotated[
+        UUID | None, typer.Option("--source", help="Restrict to one source.")
+    ] = None,
+    at: AtOption = None,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Write stale marks to the database.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Evaluate source heads and list (or apply) stale marks."""
+
+    library = _open_library(database)
+    moment = _parse_time(at)
+
+    try:
+        scan = library.freshness.scan(at=moment, dry_run=not apply, source_id=source_id)
+    except SourceNotFoundError as error:
+        _fail(str(error))
+    except ValueError as error:
+        _fail(str(error), code=2)
+
+    for decision in scan.decisions:
+        if not decision.reason_codes:
+            continue
+        status = "stale"
+        if scan.marked and any(m.entity_id == decision.lineage_id for m in scan.marked):
+            status = "marked"
+        typer.echo(
+            f"{status}: unit {decision.unit_id} lineage={decision.lineage_id} "
+            f"source={decision.source_id} reasons={decision.reason}"
+        )
+
+    expired = sum(decision.expired for decision in scan.decisions)
+    pending = sum(
+        decision.expired and decision.status.value == "active" for decision in scan.decisions
+    )
+    marks = len(scan.marked) if apply else pending
+    typer.echo(
+        f"Scan complete: {len(scan.decisions)} unit(s) evaluated at "
+        f"{scan.evaluated_at.isoformat()} | {expired} expired unit(s) "
+        f"| {marks} stale mark(s) {'appended' if apply else 'detected (dry run)'}."
     )
 
 
