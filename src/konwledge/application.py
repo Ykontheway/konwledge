@@ -20,6 +20,7 @@ from konwledge.domain import (
     Source,
     SourceKind,
 )
+from konwledge.indexing import IndexingService
 from konwledge.ingestion import (
     FileIngestionService,
     KnowledgeUnitService,
@@ -34,6 +35,7 @@ from konwledge.lifecycle import (
     LifecycleService,
     UnitState,
 )
+from konwledge.retrieval import RetrievalMode, RetrievalResult, RetrievalService
 from konwledge.storage import SessionFactory, UnitOfWork
 
 __all__ = [
@@ -170,6 +172,7 @@ class KnowledgeLibrary:
         id_factory: IdFactory = uuid4,
         clock: Clock | None = None,
         ingestion_service: TraceableIngestionService | None = None,
+        indexing_service: IndexingService | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._id_factory = id_factory
@@ -188,6 +191,9 @@ class KnowledgeLibrary:
         self._lifecycle = LifecycleService(session_factory, id_factory=id_factory, clock=clock)
         self._freshness = FreshnessService(session_factory, id_factory=id_factory, clock=clock)
         self._conflicts = ConflictService(session_factory, id_factory=id_factory, clock=clock)
+        self._retrieval = RetrievalService(
+            session_factory, indexing_service=indexing_service, clock=clock
+        )
 
     @property
     def lifecycle(self) -> LifecycleService:
@@ -206,6 +212,37 @@ class KnowledgeLibrary:
         """Deterministic conflict candidates, frozen evidence, and human review."""
 
         return self._conflicts
+
+    @property
+    def retrieval(self) -> RetrievalService:
+        """Read-only full-text, vector, and hybrid retrieval over eligible knowledge."""
+
+        return self._retrieval
+
+    def search(
+        self,
+        query: str,
+        *,
+        mode: RetrievalMode = RetrievalMode.LEXICAL,
+        top_k: int = 5,
+        candidate_limit: int | None = None,
+        rrf_k: int = 60,
+        at: datetime | None = None,
+        include_stale: bool = False,
+        source_id: UUID | None = None,
+    ) -> RetrievalResult:
+        """Search published knowledge; vector routes require injected indexing."""
+
+        return self._retrieval.search(
+            query,
+            mode=mode,
+            top_k=top_k,
+            candidate_limit=candidate_limit,
+            rrf_k=rrf_k,
+            at=at,
+            include_stale=include_stale,
+            source_id=source_id,
+        )
 
     def publishable_units(
         self, at: datetime | None = None, *, include_stale: bool = False
