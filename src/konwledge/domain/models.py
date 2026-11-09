@@ -54,6 +54,7 @@ class RevisionEntityType(StrEnum):
     DOCUMENT = "document"
     KNOWLEDGE_UNIT = "knowledge_unit"
     CITATION = "citation"
+    CONFLICT = "conflict"
 
 
 class RevisionChangeType(StrEnum):

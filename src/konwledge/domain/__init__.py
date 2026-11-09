@@ -1,5 +1,6 @@
 """Domain models for versioned knowledge."""
 
+from konwledge.domain.conflicts import Conflict, ConflictEvidence, ConflictStatus
 from konwledge.domain.freshness import FreshnessPolicy
 from konwledge.domain.models import (
     Citation,
@@ -16,6 +17,9 @@ from konwledge.domain.models import (
 
 __all__ = [
     "Citation",
+    "Conflict",
+    "ConflictEvidence",
+    "ConflictStatus",
     "Document",
     "DocumentContentType",
     "FreshnessPolicy",

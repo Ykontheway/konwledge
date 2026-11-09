@@ -486,6 +486,73 @@ assembly. U11 does not automatically filter the lower-level `VectorIndex` or imp
 retrieval pipeline. The controlled-clock tests cover deadlines, review/updates/reverts, policy
 history, dry-run/apply, batch rollback, CLI validation, and historical publication filtering.
 
+## Conflict detection
+
+U12 detects **candidates**, not which source is correct. Its first deterministic rule,
+`port_mismatch`, compares different sources asserting different scalar ports for the same
+named `*-service`. It scans only the published head's active and stale units; superseded,
+deleted, and unpublished units do not participate. Stale evidence stays visible because an
+outdated FAQ may be the contradictory source that needs review.
+
+The service name must be unambiguous in the unit, its section path, or the document (in that
+order). Recognized forms include `order-service listens on port 8080`, the Chinese listening
+form used in the demo, and `PORT=8080`. Negations, examples, alternatives, ranges, missing
+service names, and invalid port numbers are skipped rather than guessed. These conservative
+rules can miss natural-language conflicts; U12 does not provide general semantic detection.
+
+```bash
+uv run knowledge conflicts scan               # preview; no conflict records are written
+uv run knowledge conflicts scan --apply       # persist new candidates atomically
+uv run knowledge conflicts list --status pending
+uv run knowledge conflicts show <conflict-id>  # JSON with both exact evidence quotes
+uv run knowledge conflicts review <conflict-id> --status confirmed \
+  --reason "Verified that the current sources disagree" --reviewer "reviewer@example.com"
+uv run knowledge conflicts history <conflict-id>
+uv run knowledge conflicts scan --at 2026-10-20T12:00:00+08:00  # historical preview only
+```
+
+Each record freezes both sources, documents, units, lineages, quotes, character offsets,
+section paths, and observed unit statuses. A key based on the rule, subject, predicate,
+lineages, and values deduplicates repeated scans and unchanged assertions across versions.
+Changing a value creates a new key. Existing records and their original evidence are never
+automatically deleted, overwritten, reopened, or resolved when content changes.
+
+| Status | Meaning |
+| --- | --- |
+| `pending` | Awaiting review, or explicitly reopened |
+| `confirmed` | A reviewer confirmed that the sources disagree |
+| `dismissed` | A reviewer rejected this candidate |
+| `resolved` | A reviewer recorded that the conflict was handled |
+
+Any explicit status change requires a non-empty reason and appends a conflict revision;
+repeating the current status is rejected. Review time cannot precede detection or earlier
+reviews. Review does not choose a winning source, modify knowledge-unit statuses, or filter
+retrieval results. The caller is responsible for recording reviewer identity accurately.
+
+`scan --at` evaluates both publication state and conflict-review state at that time, without
+exposing future review fields. It cannot be combined with `--apply`. The scan summary exposes
+stable `candidates=`, `created=`, and `existing=` counts; persisted entries also show their UUID
+and status. `list`, `show`, and `history` display the current record and complete audit chain.
+
+```python
+preview = library.conflicts.scan()  # dry_run=True by default
+applied = library.conflicts.scan(dry_run=False)
+created = applied.created
+existing = applied.existing
+historical = library.conflicts.scan(at=aware_datetime)
+```
+
+The CLI's existing schema initialization adds the new `conflicts` table to older libraries;
+no existing columns or demo snapshot schema change. To try the demo conflict:
+
+```bash
+uv run knowledge demo build
+uv run knowledge conflicts scan -d .konwledge/demo/knowledge.db
+```
+
+This finds exactly the current guide's active `8080` assertion versus the FAQ's stale `8000`
+assertion, with both original quotes and offsets. Old guide versions are not treated as
+current contradictory evidence. The static frontend and demo snapshot remain unchanged.
 
 ## Demo snapshot
 

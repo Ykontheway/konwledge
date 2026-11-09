@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
 
+from konwledge.conflicts import ConflictService
 from konwledge.domain import (
     Document,
     KnowledgeUnit,
@@ -186,6 +187,7 @@ class KnowledgeLibrary:
         )
         self._lifecycle = LifecycleService(session_factory, id_factory=id_factory, clock=clock)
         self._freshness = FreshnessService(session_factory, id_factory=id_factory, clock=clock)
+        self._conflicts = ConflictService(session_factory, id_factory=id_factory, clock=clock)
 
     @property
     def lifecycle(self) -> LifecycleService:
@@ -198,6 +200,12 @@ class KnowledgeLibrary:
         """Freshness policy configuration and automated stale scans."""
 
         return self._freshness
+
+    @property
+    def conflicts(self) -> ConflictService:
+        """Deterministic conflict candidates, frozen evidence, and human review."""
+
+        return self._conflicts
 
     def publishable_units(
         self, at: datetime | None = None, *, include_stale: bool = False

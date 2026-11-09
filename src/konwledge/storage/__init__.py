@@ -1,5 +1,6 @@
 """SQLite metadata storage and transaction boundaries."""
 
+from konwledge.storage.conflicts import ConflictRepository
 from konwledge.storage.database import (
     SessionFactory,
     create_schema,
@@ -20,6 +21,7 @@ from konwledge.storage.unit_of_work import UnitOfWork
 
 __all__ = [
     "CitationRepository",
+    "ConflictRepository",
     "DocumentRepository",
     "EntityNotFoundError",
     "ImmutableEntityError",

@@ -15,7 +15,7 @@ import typer
 from konwledge import __version__
 from konwledge.application import ImportPathError, KnowledgeLibrary, KnowledgeUnitNotFoundError
 from konwledge.demo import DemoWorkspaceError, build_demo, export_demo
-from konwledge.domain import FreshnessPolicy, KnowledgeUnit
+from konwledge.domain import ConflictStatus, FreshnessPolicy, KnowledgeUnit
 from konwledge.lifecycle import (
     DocumentNotFoundError,
     LifecycleTransitionError,
@@ -371,6 +371,146 @@ def _mark(database: Path, unit_id: UUID, *, stale: bool, reason: str | None) -> 
         f"{status}: unit {unit_id} | lineage={revision.entity_id} rev {revision.revision} "
         f"at {revision.created_at.isoformat()}"
     )
+
+
+conflicts_app = typer.Typer(
+    name="conflicts",
+    help="Detect contradictory knowledge and manage human reviews.",
+    no_args_is_help=True,
+)
+app.add_typer(conflicts_app, name="conflicts")
+
+
+@conflicts_app.command("scan")
+def conflicts_scan_command(
+    at: AtOption = None,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Write detected conflicts to the database.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Evaluate source heads and list (or apply) conflict candidates."""
+
+    library = _open_library(database)
+    moment = _parse_time(at)
+
+    try:
+        scan = library.conflicts.scan(at=moment, dry_run=not apply)
+    except ValueError as error:
+        _fail(str(error), code=2)
+
+    stored = {conflict.key: conflict for conflict in (*scan.existing, *scan.created)}
+    existing_keys = {conflict.key for conflict in scan.existing}
+    for candidate in scan.candidates:
+        conflict = stored.get(candidate.key)
+        prefix = (
+            "existing"
+            if candidate.key in existing_keys
+            else ("created" if conflict is not None else "candidate")
+        )
+        identity = "" if conflict is None else f" | id={conflict.id} status={conflict.status.value}"
+        typer.echo(
+            f"{prefix}: {candidate.rule} | key={candidate.key}{identity} | "
+            f"left={candidate.left.source_uri} [{candidate.left.value}] | "
+            f"right={candidate.right.source_uri} [{candidate.right.value}]"
+        )
+
+    typer.echo(
+        f"Scan complete: candidates={len(scan.candidates)} created={len(scan.created)} "
+        f"existing={len(scan.existing)} | at={scan.evaluated_at.isoformat()} | "
+        f"{'applied' if apply else 'dry run'}"
+    )
+
+
+@conflicts_app.command("list")
+def conflicts_list_command(
+    status: Annotated[
+        ConflictStatus | None, typer.Option("--status", help="Filter by current status.")
+    ] = None,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """List all detected conflicts."""
+
+    conflicts = _open_library(database).conflicts.list(status=status)
+    if not conflicts:
+        typer.echo("No conflicts found.")
+        return
+
+    for conflict in conflicts:
+        typer.echo(
+            f"{conflict.id} | {conflict.status.value:<10} | {conflict.rule} | "
+            f"{conflict.left.source_uri} vs {conflict.right.source_uri}"
+        )
+
+
+@conflicts_app.command("show")
+def conflicts_show_command(
+    conflict_id: Annotated[UUID, typer.Argument(help="Conflict UUID.")],
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show one conflict in JSON format."""
+
+    try:
+        conflict = _open_library(database).conflicts.get(conflict_id)
+    except LookupError as error:
+        _fail(str(error))
+
+    typer.echo(conflict.model_dump_json(indent=2))
+
+
+@conflicts_app.command("review")
+def conflicts_review_command(
+    conflict_id: Annotated[UUID, typer.Argument(help="Conflict UUID.")],
+    status: Annotated[
+        ConflictStatus, typer.Option("--status", help="New status for the conflict.")
+    ],
+    reason: Annotated[str, typer.Option("--reason", "-r", help="Why this status was chosen.")],
+    reviewer: Annotated[
+        str | None, typer.Option("--reviewer", help="Who performed the review.")
+    ] = None,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Record a human decision on a conflict candidate."""
+
+    try:
+        conflict = _open_library(database).conflicts.review(
+            conflict_id, status=status, reason=reason, reviewer=reviewer
+        )
+    except LookupError as error:
+        _fail(str(error))
+    except ValueError as error:
+        _fail(str(error), code=2)
+
+    typer.echo(f"reviewed: {conflict.id} status={conflict.status.value}")
+
+
+@conflicts_app.command("history")
+def conflicts_history_command(
+    conflict_id: Annotated[UUID, typer.Argument(help="Conflict UUID.")],
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show the revision chain of one conflict."""
+
+    try:
+        revisions = _open_library(database).conflicts.history(conflict_id)
+    except LookupError as error:
+        _fail(str(error))
+
+    typer.echo(f"conflict: {conflict_id}")
+    typer.echo(f"revisions: {len(revisions)}")
+    for revision in revisions:
+        change = revision.payload.get("change", "unknown")
+        typer.echo(
+            f"  rev {revision.revision} {revision.change_type.value} ({change}) "
+            f"at {revision.created_at.isoformat()}"
+        )
+        if change == "reviewed":
+            typer.echo(
+                f"    {revision.payload['from_status']} -> {revision.payload['to_status']} | "
+                f"reason={revision.payload['reason']} | reviewer={revision.payload.get('reviewer')}"
+            )
+        elif change == "detected":
+            typer.echo(f"    key={revision.payload['key']} | status={revision.payload['status']}")
 
 
 @app.command("publishable")
