@@ -542,83 +542,80 @@ def test_library_publishable_units_filtering(session_factory: SessionFactory) ->
 # ---------------------------------------------------------------------------
 
 
-def test_cli_freshness_lifecycle(tmp_path: Path) -> None:
+def test_cli_freshness_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
     database = str(tmp_path / "knowledge.db")
     guide = tmp_path / "guide.md"
     guide.write_text("# Test\nContent.\n", encoding="utf-8")
+    engine = create_sqlite_engine(f"sqlite:///{database}")
+    request.addfinalizer(engine.dispose)
+    create_schema(engine)
+    cli_session_factory = create_session_factory(engine)
+    moment = NOW
+
+    def _open_controlled(path: Path) -> KnowledgeLibrary:
+        assert path == Path(database)
+        return KnowledgeLibrary(cli_session_factory, clock=lambda: moment)
+
+    # Import, policy configuration and scans must use the same controlled clock.
+    # Mixing a fixed future date with a wall-clock import makes this test expire.
+    monkeypatch.setattr("konwledge.cli._open_library", _open_controlled)
 
     def _invoke(*args: str) -> tuple[int, str, str]:
         result = CliRunner().invoke(app, list(args))
         return result.exit_code, result.stdout, result.stderr
 
-    _invoke("import", str(guide), "-d", database)
-
-    # Find source ID directly from database
-    engine = create_sqlite_engine(f"sqlite:///{database}")
-    cli_session_factory = create_session_factory(engine)
+    code, _, err = _invoke("import", str(guide), "-d", database)
+    assert code == 0, err
     with UnitOfWork(cli_session_factory) as uow:
         source_id = str(uow.sources.list()[0].id)
 
-    # Configure policy
     code, out, _ = _invoke("freshness", "configure", source_id, "--ttl-days", "7", "-d", database)
     assert code == 0
     assert "freshness configured" in out
 
-    # Show policy
     code, out, _ = _invoke("freshness", "show", source_id, "-d", database)
     assert code == 0
     policy = json.loads(out)
     assert policy["ttl_seconds"] == 7 * 86400
 
-    # Scan (dry run)
     code, out, _ = _invoke("freshness", "scan", "--source", source_id, "-d", database)
     assert code == 0
     assert "Scan complete" in out
     assert "0 stale mark(s) detected" in out
 
-    # Scan with --at far in the future
-    future = (NOW + timedelta(days=10)).isoformat()
+    future = NOW + timedelta(days=10)
     code, out, _ = _invoke(
-        "freshness", "scan", "--source", source_id, "--at", future, "-d", database
+        "freshness", "scan", "--source", source_id, "--at", future.isoformat(), "-d", database
     )
+    assert code == 0
     assert "stale: unit" in out
     assert "1 stale mark(s) detected (dry run)" in out
 
-    # Apply scan
-    with patch("konwledge.lifecycle.freshness.datetime") as mock_dt:
-        mock_dt.now.return_value = NOW + timedelta(days=10)
-        mock_dt.fromisoformat = datetime.fromisoformat
-        # The clock in library will be real, so we need to either mock it or use --at
-        # But --apply + --at is forbidden.
-        # Actually we can just wait? No, let's mock the library clock via _open_library.
+    # --apply cannot be combined with --at: advance the injected clock instead.
+    moment = future
+    code, out, _ = _invoke("freshness", "scan", "--source", source_id, "--apply", "-d", database)
+    assert code == 0
+    assert "1 stale mark(s) appended" in out
 
-        with patch("konwledge.cli._open_library") as mock_open:
-            lib = KnowledgeLibrary(
-                create_session_factory(create_sqlite_engine(f"sqlite:///{database}")),
-                clock=lambda: NOW + timedelta(days=10),
-            )
-            mock_open.return_value = lib
-            code, out, _ = _invoke(
-                "freshness", "scan", "--source", source_id, "--apply", "-d", database
-            )
-            assert code == 0
-            assert "1 stale mark(s) appended" in out
-
-    # Verify status in knowledge list
     code, out, _ = _invoke("list", "-d", database)
+    assert code == 0
     assert "status=stale" in out
 
-    # Publishable list
     code, out, _ = _invoke("publishable", "-d", database)
+    assert code == 0
     assert not any(line.startswith("unit ") for line in out.splitlines())
     code, out, _ = _invoke("publishable", "--include-stale", "-d", database)
+    assert code == 0
     assert any(line.startswith("unit ") for line in out.splitlines())
     assert "status=stale" in out
 
-    # Disable policy
     code, out, _ = _invoke("freshness", "configure", source_id, "--disable", "-d", database)
+    assert code == 0
     assert "freshness disabled" in out
     code, out, _ = _invoke("freshness", "show", source_id, "-d", database)
+    assert code == 0
     assert json.loads(out) == {"ttl_seconds": None, "source_updated_at": None}
 
 

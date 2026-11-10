@@ -237,23 +237,40 @@ class Revision(KonwledgeModel):
 class Citation(KonwledgeModel):
     """A model-ready reference from generated context to an exact source unit."""
 
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        str_strip_whitespace=False,
+        validate_default=True,
+    )
+
     id: UUID
     source_id: UUID
     document_id: UUID
     knowledge_unit_id: UUID
-    quote: str = Field(min_length=1)
+    quote: str = Field(strict=True, min_length=1)
     locator: str | None = None
     start_char: int | None = Field(default=None, ge=0)
     end_char: int | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("quote")
+    @classmethod
+    def validate_quote(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("quote must contain non-whitespace content")
+        return value
+
     @field_validator("locator")
     @classmethod
     def validate_locator(cls, value: str | None) -> str | None:
-        if value == "":
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
             raise ValueError("locator must not be empty when provided")
-        return value
+        return normalized
 
     @model_validator(mode="after")
     def validate_range(self) -> Self:

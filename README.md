@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U13 adds lifecycle-aware FTS5/vector retrieval and RRF fusion, following U12's deterministic conflict candidates and review audit chain. The demo frontend remains paused at V2; these increments change only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
+> Status: pre-alpha. U14 adds exact citations and bounded, evidence-only context on top of U13's lifecycle-aware hybrid retrieval. The demo frontend remains paused at V2; these increments change only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
 
 ## Implemented increments
 
@@ -23,8 +23,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U11 | 2026-11-06 | Source-scoped TTL and known source-update policies; append-only configuration; atomic dry-run/apply stale scans; active-only publication API and CLI; controlled-clock regression tests |
 | U12 | 2026-11-09 | Deterministic service-port conflict candidates, frozen two-sided evidence, atomic persistence, human review states and audit chain, historical preview and conflict CLI |
 | U13 | 2026-11-09 | Transactionally synchronized SQLite FTS5, vector retrieval, deterministic RRF fusion, active-only/source/as-of filtering, missing-vector diagnostics, and search CLI |
+| U14 | 2026-11-10 | Deterministic exact citations, whole-unit context budgets, duplicate/overlap filtering, source-safe JSON records, and context SDK/CLI |
 
-Each increment builds on the preceding implementation. This branch contains U01-U13, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
+Each increment builds on the preceding implementation. This branch contains U01-U14, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
 
 ## Why this project
 
@@ -164,6 +165,17 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   │   ├── revisions.py
 │   │   ├── service.py
 │   │   └── status.py
+│   ├── retrieval/
+│   │   ├── __init__.py
+│   │   ├── fusion.py
+│   │   ├── models.py
+│   │   └── service.py
+│   ├── context/
+│   │   ├── __init__.py
+│   │   ├── assembly.py
+│   │   ├── citations.py
+│   │   ├── models.py
+│   │   └── service.py
 │   ├── snapshot/
 │   │   ├── __init__.py
 │   │   ├── export.py
@@ -197,7 +209,7 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 └── pyproject.toml
 ```
 
-The remaining modules will be added only when they gain executable behavior: `retrieval`, `evaluation`, `providers`, and `api`.
+The remaining modules will be added only when they gain executable behavior: `evaluation`, `providers`, and `api`.
 
 ## Domain models
 
@@ -636,6 +648,89 @@ ranges, along with resolved status, route ranks and raw scores. `--json` emits t
 result on stdout; diagnostics stay on stderr. U13 does not generate answers, create citations,
 assemble model context, resolve conflicts, or apply evaluation gates; those remain later slices.
 The static frontend and V1 snapshot contract are unchanged.
+
+## Context assembly and citations
+
+U14 turns one retrieval snapshot into a `ContextPacket`: ranked whole-unit evidence,
+exact citations, explicit skip reasons, and bounded `context_text`. It does not generate
+an answer or call an LLM.
+
+```bash
+uv run knowledge context "deployment" --max-chars 8000 --max-units 3
+uv run knowledge context "deployment" --top-k 10 --candidate-limit 20 --json
+uv run knowledge context "监听" --at 2026-10-10T12:00:00+08:00 \
+  -d .konwledge/demo/knowledge.db --json
+uv run knowledge context "order-service" --mode hybrid --demo-vectors --include-stale
+```
+
+The CLI accepts the same retrieval options as `search`. Vector/hybrid modes still require
+an injected SDK index or the explicit offline `--demo-vectors` flag. The latter only tests
+pipeline wiring, not semantic quality. Diagnostics remain on stderr; `--json` writes exactly
+one full packet to stdout. Human output includes a summary, the rendered context, and skips.
+
+Selection preserves retrieval order and applies the following rules:
+
+- Include only `active` evidence, or `stale` when explicitly requested. Historical packets
+  use the hit's status at `evaluated_at`, not today's nested unit-status cache.
+- Never repeat a unit or lineage. Reject overlapping spans inside one document version;
+  adjacent spans and evidence from different documents are allowed.
+- Keep each accepted unit's complete original text. When a record does not fit, skip the
+  whole unit and consider the next hit; do not truncate quotes or synthesize summaries.
+- Assign continuous labels `[1]`, `[2]`, etc. Return skipped unit IDs with `status`,
+  `duplicate`, `overlap`, `budget`, or `max_units` reasons.
+
+`max_chars` defaults to **8,000 Python Unicode code points**, not bytes or model tokens.
+It measures `len(context_text)`, including the fixed preamble, labels, metadata, JSON escapes,
+and record newlines. It excludes the query, CLI summary, outer packet JSON, and any caller
+system prompt. `max_chars=0` returns empty context and budget skips; `max_units` must be
+positive and defaults to 10. `top_k` caps retrieved hits **before** assembly: increase it if
+more alternatives should be available after budget skips. Selection is greedy, not an
+optimal packing algorithm. An empty packet is a valid result, never a reason to fabricate
+an answer.
+
+Each block carries a `Citation` with source/document/unit IDs, the source locator, exact
+`[start_char, end_char)` offsets, and `quote == unit.text`. Offsets refer to the **normalized
+imported document version**, not raw-file byte offsets. Original whitespace and Unicode are
+preserved. Citation IDs are deterministic UUID5 values derived from source, document, unit,
+range, and quote hash: rerunning retrieval or changing ranks does not change the ID for the
+same evidence. A new document/unit version gets its own citation. Retrieval scores are
+selection diagnostics, not citation confidence; `confidence` stays `None`.
+
+Rendered context is a fixed trust-boundary notice followed by one compact JSON record per
+block. Source quotes are escaped JSON strings, so embedded newlines or fake markup do not
+create additional records. This identifies source text as untrusted evidence; it is **not**
+a guarantee that a downstream model will resist prompt injection. Callers still need their
+own system instructions and tool authorization boundaries.
+
+```python
+from konwledge.context import assemble_context, verify_citation
+
+packet = library.build_context("deployment", top_k=10, max_chars=8000, max_units=3)
+print(packet.context_text, packet.used_chars)
+for label, citation in packet.citation_map.items():
+    print(label, citation.locator, citation.start_char, citation.end_char)
+
+# Reuse an existing retrieval result without another search or clock read.
+result = library.search("deployment")
+packet = assemble_context(result, max_chars=8000, max_units=3)
+assert packet == library.context.assemble(result, max_chars=8000, max_units=3)
+for block in packet.blocks:
+    hit = next(hit for hit in result.hits if hit.unit.id == block.citation.knowledge_unit_id)
+    verify_citation(block.citation, hit)
+```
+
+`ContextPacket` validates continuous labels, allowed statuses, unique units/lineages,
+non-overlapping spans, exact offset lengths, rendered text, and both limits on JSON roundtrip.
+`packet.citations`, `packet.citation_map`, and `packet.degraded` are SDK properties, not
+serialized fields; JSON contains `blocks[].citation`, `skipped`, and `missing_vector_ids`.
+Missing-vector diagnostics propagate unchanged even if all evidence is skipped.
+
+Assembly is read-only: it does not persist citations, add revisions, change statuses,
+repair vectors, or read live source files. CLI opening still performs the existing additive
+schema initialization, and explicit demo mode builds temporary vectors. The generic
+`CitationRepository` remains available for callers who explicitly choose persistence, but
+U14 never writes to it. No evaluation gates, frontend changes, or demo snapshot/schema
+changes are included in this increment.
 
 ## Demo snapshot
 

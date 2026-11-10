@@ -13,6 +13,7 @@ import typer
 
 from konwledge import __version__
 from konwledge.application import ImportPathError, KnowledgeLibrary, KnowledgeUnitNotFoundError
+from konwledge.context import assemble_context, validate_budget
 from konwledge.demo import DemoWorkspaceError, build_demo, export_demo
 from konwledge.domain import ConflictStatus, FreshnessPolicy, KnowledgeUnit
 from konwledge.embedding import EmbeddingService, HashEmbeddingProvider
@@ -23,7 +24,7 @@ from konwledge.lifecycle import (
     SourceNotFoundError,
     UnitState,
 )
-from konwledge.retrieval import RetrievalMode, RetrievalService
+from konwledge.retrieval import RetrievalMode, RetrievalResult, RetrievalService
 from konwledge.snapshot import dump_schema, dump_snapshot
 from konwledge.storage import create_schema, create_session_factory, create_sqlite_engine
 
@@ -105,6 +106,92 @@ def _parse_time(value: str | None) -> datetime | None:
     except ValueError:
         _fail(f"invalid --at time {value!r}; expected ISO 8601", code=2)
     return parsed if parsed.tzinfo is not None else parsed.astimezone()
+
+
+def _perform_retrieval(
+    query: str,
+    mode: RetrievalMode,
+    top_k: int,
+    candidate_limit: int | None,
+    rrf_k: int,
+    at: str | None,
+    include_stale: bool,
+    source_id: UUID | None,
+    demo_vectors: bool,
+    database: Path,
+) -> RetrievalResult:
+    moment = _parse_time(at)
+    if not query.strip():
+        _fail("query must contain non-whitespace content", code=2)
+    if candidate_limit is not None and candidate_limit < top_k:
+        _fail("candidate_limit must be greater than or equal to top_k", code=2)
+    if demo_vectors and mode is RetrievalMode.LEXICAL:
+        _fail("--demo-vectors requires --mode vector or hybrid", code=2)
+
+    library = _open_library(database)
+    search = library.search
+    if demo_vectors:
+        typer.echo(
+            "Warning: demo hash embeddings test retrieval plumbing, not semantic quality. "
+            "Vectors are temporary and are not persisted.",
+            err=True,
+        )
+        provider = HashEmbeddingProvider()
+        indexing = IndexingService(
+            embedding_service=EmbeddingService(provider),
+            vector_index=InMemoryVectorIndex(dimension=provider.dimension),
+        )
+        # Explicit demo setup, separate from the read-only retrieval service.
+        # Historical versions remain searchable without changing U09's index policy.
+        indexing.index_units(
+            [unit for summary in library.list_documents() for unit in summary.units]
+        )
+        engine = create_sqlite_engine(
+            f"sqlite+pysqlite:///{database.expanduser().resolve().as_posix()}"
+        )
+        try:
+            search = RetrievalService(
+                create_session_factory(engine), indexing_service=indexing
+            ).search
+            result = search(
+                query,
+                mode=mode,
+                top_k=top_k,
+                candidate_limit=candidate_limit,
+                rrf_k=rrf_k,
+                at=moment,
+                include_stale=include_stale,
+                source_id=source_id,
+            )
+        except (ValueError, RuntimeError) as error:
+            _fail(str(error), code=2)
+        finally:
+            engine.dispose()
+    else:
+        try:
+            result = search(
+                query,
+                mode=mode,
+                top_k=top_k,
+                candidate_limit=candidate_limit,
+                rrf_k=rrf_k,
+                at=moment,
+                include_stale=include_stale,
+                source_id=source_id,
+            )
+        except ValueError as error:
+            _fail(str(error), code=2)
+        except RuntimeError as error:
+            _fail(str(error))
+
+    if result.degraded:
+        typer.echo(
+            f"Warning: {len(result.missing_vector_ids)} eligible unit(s) lack usable vectors; "
+            "vector recall is incomplete. missing_vector_ids="
+            + ",".join(str(unit_id) for unit_id in result.missing_vector_ids),
+            err=True,
+        )
+    return result
 
 
 def _section(unit: KnowledgeUnit) -> str:
@@ -202,76 +289,19 @@ def search_command(
 ) -> None:
     """Search eligible knowledge, keeping the original evidence and route ranks."""
 
-    moment = _parse_time(at)
-    if not query.strip():
-        _fail("query must contain non-whitespace content", code=2)
-    if candidate_limit is not None and candidate_limit < top_k:
-        _fail("candidate_limit must be greater than or equal to top_k", code=2)
-    if demo_vectors and mode is RetrievalMode.LEXICAL:
-        _fail("--demo-vectors requires --mode vector or hybrid", code=2)
-    library = _open_library(database)
-    search = library.search
-    if demo_vectors:
-        typer.echo(
-            "Warning: demo hash embeddings test retrieval plumbing, not semantic quality. "
-            "Vectors are temporary and are not persisted.",
-            err=True,
-        )
-        provider = HashEmbeddingProvider()
-        indexing = IndexingService(
-            embedding_service=EmbeddingService(provider),
-            vector_index=InMemoryVectorIndex(dimension=provider.dimension),
-        )
-        # Explicit demo setup, separate from the read-only retrieval service.
-        # Historical versions remain searchable without changing U09's index policy.
-        indexing.index_units(
-            [unit for summary in library.list_documents() for unit in summary.units]
-        )
-        engine = create_sqlite_engine(
-            f"sqlite+pysqlite:///{database.expanduser().resolve().as_posix()}"
-        )
-        try:
-            search = RetrievalService(
-                create_session_factory(engine), indexing_service=indexing
-            ).search
-            result = search(
-                query,
-                mode=mode,
-                top_k=top_k,
-                candidate_limit=candidate_limit,
-                rrf_k=rrf_k,
-                at=moment,
-                include_stale=include_stale,
-                source_id=source_id,
-            )
-        except (ValueError, RuntimeError) as error:
-            _fail(str(error), code=2)
-        finally:
-            engine.dispose()
-    else:
-        try:
-            result = search(
-                query,
-                mode=mode,
-                top_k=top_k,
-                candidate_limit=candidate_limit,
-                rrf_k=rrf_k,
-                at=moment,
-                include_stale=include_stale,
-                source_id=source_id,
-            )
-        except ValueError as error:
-            _fail(str(error), code=2)
-        except RuntimeError as error:
-            _fail(str(error))
+    result = _perform_retrieval(
+        query=query,
+        mode=mode,
+        top_k=top_k,
+        candidate_limit=candidate_limit,
+        rrf_k=rrf_k,
+        at=at,
+        include_stale=include_stale,
+        source_id=source_id,
+        demo_vectors=demo_vectors,
+        database=database,
+    )
 
-    if result.degraded:
-        typer.echo(
-            f"Warning: {len(result.missing_vector_ids)} eligible unit(s) lack usable vectors; "
-            "vector recall is incomplete. missing_vector_ids="
-            + ",".join(str(unit_id) for unit_id in result.missing_vector_ids),
-            err=True,
-        )
     if json_output:
         typer.echo(result.model_dump_json(indent=2))
         return
@@ -291,6 +321,81 @@ def search_command(
             f"range=[{hit.unit.start_char}, {hit.unit.end_char}) section={_section(hit.unit)}"
         )
         typer.echo(hit.unit.text)
+
+
+@app.command("context")
+def context_command(
+    query: Annotated[str, typer.Argument(help="Literal search text (not raw FTS syntax).")],
+    mode: Annotated[
+        RetrievalMode, typer.Option("--mode", help="Retrieval route.")
+    ] = RetrievalMode.LEXICAL,
+    top_k: Annotated[int, typer.Option("--top-k", min=1, help="Maximum results.")] = 5,
+    candidate_limit: Annotated[int | None, typer.Option("--candidate-limit", min=1)] = None,
+    rrf_k: Annotated[int, typer.Option("--rrf-k", min=1)] = 60,
+    at: AtOption = None,
+    include_stale: Annotated[
+        bool, typer.Option("--include-stale", help="Also search stale head units.")
+    ] = False,
+    source_id: Annotated[
+        UUID | None, typer.Option("--source", help="Restrict to a source UUID.")
+    ] = None,
+    demo_vectors: Annotated[
+        bool,
+        typer.Option(
+            "--demo-vectors", help="Build temporary offline hash vectors; not semantic embeddings."
+        ),
+    ] = False,
+    max_chars: Annotated[
+        int, typer.Option("--max-chars", min=0, help="Maximum serialized context characters.")
+    ] = 8000,
+    max_units: Annotated[
+        int, typer.Option("--max-units", min=1, help="Maximum evidence units.")
+    ] = 10,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the complete context packet as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Retrieve once and assemble bounded, source-backed context."""
+
+    try:
+        validate_budget(max_chars, max_units)
+    except ValueError as error:
+        _fail(str(error), code=2)
+    result = _perform_retrieval(
+        query=query,
+        mode=mode,
+        top_k=top_k,
+        candidate_limit=candidate_limit,
+        rrf_k=rrf_k,
+        at=at,
+        include_stale=include_stale,
+        source_id=source_id,
+        demo_vectors=demo_vectors,
+        database=database,
+    )
+    try:
+        packet = assemble_context(result, max_chars=max_chars, max_units=max_units)
+    except ValueError as error:
+        _fail(str(error), code=2)
+
+    if json_output:
+        typer.echo(packet.model_dump_json(indent=2))
+        return
+
+    typer.echo(
+        f"Context: mode={packet.mode.value} evidence={len(packet.blocks)} "
+        f"skipped={len(packet.skipped)} used_chars={packet.used_chars}/{packet.max_chars} "
+        f"at={packet.evaluated_at.isoformat()} degraded={str(packet.degraded).lower()}"
+    )
+    if packet.context_text:
+        typer.echo(packet.context_text, nl=not packet.context_text.endswith("\n"))
+    elif result.hits:
+        typer.echo("No evidence fits the context limits.")
+    else:
+        typer.echo("No matching evidence found.")
+    for skipped in packet.skipped:
+        typer.echo(f"skipped: unit={skipped.unit_id} reason={skipped.reason.value}")
 
 
 @app.command("list")

@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import IntegrityError
 
 from konwledge.conflicts import ConflictService
+from konwledge.context import ContextPacket, ContextService
 from konwledge.domain import (
     Document,
     KnowledgeUnit,
@@ -194,6 +195,7 @@ class KnowledgeLibrary:
         self._retrieval = RetrievalService(
             session_factory, indexing_service=indexing_service, clock=clock
         )
+        self._context = ContextService(self._retrieval)
 
     @property
     def lifecycle(self) -> LifecycleService:
@@ -242,6 +244,41 @@ class KnowledgeLibrary:
             at=at,
             include_stale=include_stale,
             source_id=source_id,
+        )
+
+    @property
+    def context(self) -> ContextService:
+        """Exact citations and bounded context built from one retrieval result."""
+
+        return self._context
+
+    def build_context(
+        self,
+        query: str,
+        *,
+        mode: RetrievalMode = RetrievalMode.LEXICAL,
+        top_k: int = 5,
+        candidate_limit: int | None = None,
+        rrf_k: int = 60,
+        at: datetime | None = None,
+        include_stale: bool = False,
+        source_id: UUID | None = None,
+        max_chars: int = 8000,
+        max_units: int = 10,
+    ) -> ContextPacket:
+        """Retrieve once and assemble whole, source-backed evidence without writes."""
+
+        return self._context.build(
+            query,
+            mode=mode,
+            top_k=top_k,
+            candidate_limit=candidate_limit,
+            rrf_k=rrf_k,
+            at=at,
+            include_stale=include_stale,
+            source_id=source_id,
+            max_chars=max_chars,
+            max_units=max_units,
         )
 
     def publishable_units(
