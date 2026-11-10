@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
+import errno
 import json
+import os
+import tempfile
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -19,10 +23,18 @@ from konwledge.demo import DemoWorkspaceError, build_demo, export_demo
 from konwledge.domain import ConflictStatus, FreshnessPolicy, KnowledgeUnit
 from konwledge.embedding import EmbeddingService, HashEmbeddingProvider
 from konwledge.evaluation import (
+    EvaluationBaseline,
+    EvaluationComparison,
     EvaluationReport,
     EvaluationService,
     EvaluationSet,
+    GatePolicy,
+    GateResult,
+    baseline_from_report,
+    compare_baseline,
+    dump_baseline,
     dump_evaluation_set,
+    evaluate_gate,
 )
 from konwledge.indexing import IndexingService, InMemoryVectorIndex
 from konwledge.lifecycle import (
@@ -1006,6 +1018,250 @@ def evaluation_run_command(
         return
 
     _print_evaluation_report(report)
+
+
+def _read_utf8(path: Path, *, kind: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        _fail(f"could not read {kind}: {error}")
+
+
+def _load_baseline(path: Path) -> EvaluationBaseline:
+    content = _read_utf8(path, kind="baseline")
+    try:
+        return EvaluationBaseline.model_validate_json(content)
+    except (ValidationError, ValueError) as error:
+        _fail(f"invalid evaluation baseline: {error}", code=2)
+
+
+def _load_report(path: Path) -> EvaluationReport:
+    content = _read_utf8(path, kind="candidate report")
+    try:
+        return EvaluationReport.model_validate_json(content)
+    except (ValidationError, ValueError) as error:
+        _fail(f"invalid evaluation report: {error}", code=2)
+
+
+def _load_policy(path: Path) -> GatePolicy:
+    content = _read_utf8(path, kind="gate policy")
+    try:
+        return GatePolicy.model_validate_json(content)
+    except (ValidationError, ValueError) as error:
+        _fail(f"invalid gate policy: {error}", code=2)
+
+
+def _atomic_write(path: Path, content: str, *, overwrite: bool) -> None:
+    """Write validated content in one publication step, cleaning every temporary file."""
+
+    parent = path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=parent
+    )
+    temporary = Path(temporary_name)
+    published = False
+    try:
+        os.chmod(temporary, 0o644)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
+            descriptor = -1
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if overwrite:
+            os.replace(temporary, path)
+            published = True
+            return
+        try:
+            os.link(temporary, path)
+            published = True
+        except OSError as error:
+            if error.errno == errno.EEXIST:
+                raise FileExistsError(path) from error
+            # Hard links can be unavailable on some filesystems. O_EXCL still prevents
+            # replacement; remove only a target this call created if writing fails.
+            target_descriptor = -1
+            target_created = False
+            try:
+                target_descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                target_created = True
+                os.fchmod(target_descriptor, 0o644)
+                with os.fdopen(target_descriptor, "w", encoding="utf-8", newline="") as stream:
+                    target_descriptor = -1
+                    stream.write(content)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                published = True
+            except OSError:
+                if target_descriptor >= 0:
+                    os.close(target_descriptor)
+                if target_created:
+                    with contextlib.suppress(FileNotFoundError):
+                        path.unlink()
+                raise
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if not published or temporary.exists():
+            with contextlib.suppress(FileNotFoundError):
+                temporary.unlink()
+
+
+@evaluation_app.command("baseline")
+def evaluation_baseline_command(
+    report_path: Annotated[Path, typer.Argument(help="Complete evaluation report JSON file.")],
+    output: Annotated[
+        Path, typer.Option("--output", "-o", help="New portable baseline JSON file.")
+    ],
+    overwrite: Annotated[
+        bool, typer.Option("--overwrite", help="Explicitly replace an existing output file.")
+    ] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the complete portable baseline as JSON.")
+    ] = False,
+) -> None:
+    """Create a healthy portable baseline from a complete report file."""
+
+    content = _read_utf8(report_path, kind="evaluation report")
+    try:
+        report = EvaluationReport.model_validate_json(content)
+        baseline = baseline_from_report(report)
+        serialized = dump_baseline(baseline)
+    except (ValidationError, ValueError) as error:
+        _fail(f"invalid evaluation report: {error}", code=2)
+
+    if output.exists() and not overwrite:
+        _fail("output already exists; pass --overwrite to replace it", code=2)
+    try:
+        _atomic_write(output, serialized, overwrite=overwrite)
+    except FileExistsError:
+        _fail("output already exists; pass --overwrite to replace it", code=2)
+    except (OSError, UnicodeError) as error:
+        _fail(f"could not write baseline: {error}")
+
+    if json_output:
+        typer.echo(serialized, nl=False)
+        return
+    typer.echo(
+        f"created baseline: {output} | dataset={baseline.dataset.id} "
+        f"version={baseline.dataset.version}"
+    )
+
+
+def _warn_comparison_degradation(comparison: EvaluationComparison) -> None:
+    for case in comparison.candidate.cases:
+        if not case.missing_vector_ids:
+            continue
+        ids = ",".join(str(vector_id) for vector_id in case.missing_vector_ids)
+        typer.echo(f"Warning: candidate case {case.item_id} has missing vectors: {ids}", err=True)
+
+
+def _delta_location(item_id: str | None) -> str:
+    return "aggregate" if item_id is None else f"case {item_id}"
+
+
+def _format_metric(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.6f}"
+
+
+def _print_comparison(comparison: EvaluationComparison) -> None:
+    baseline = comparison.baseline
+    typer.echo(
+        f"Comparison: dataset={baseline.dataset.id} version={baseline.dataset.version} "
+        f"degraded={str(comparison.degraded).lower()}"
+    )
+    for delta in comparison.deltas:
+        typer.echo(
+            f"  {_delta_location(delta.item_id)} | {delta.metric.value}: "
+            f"baseline={_format_metric(delta.baseline_value)} "
+            f"candidate={_format_metric(delta.candidate_value)} "
+            f"delta={_format_metric(delta.delta)}"
+        )
+
+
+def _make_comparison(baseline_path: Path, candidate_path: Path) -> EvaluationComparison:
+    baseline = _load_baseline(baseline_path)
+    candidate = _load_report(candidate_path)
+    try:
+        return compare_baseline(baseline, candidate)
+    except (ValidationError, ValueError) as error:
+        _fail(f"invalid evaluation comparison: {error}", code=2)
+    except Exception as error:
+        _fail(f"could not compare evaluations: {error}")
+
+
+@evaluation_app.command("compare")
+def evaluation_compare_command(
+    baseline_path: Annotated[Path, typer.Argument(help="Portable baseline JSON file.")],
+    candidate_report_path: Annotated[
+        Path, typer.Argument(help="Complete candidate evaluation report JSON file.")
+    ],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the complete comparison as JSON.")
+    ] = False,
+) -> None:
+    """Compare a baseline with a complete candidate report without applying a policy."""
+
+    comparison = _make_comparison(baseline_path, candidate_report_path)
+    _warn_comparison_degradation(comparison)
+    if json_output:
+        typer.echo(comparison.model_dump_json(indent=2))
+        return
+    _print_comparison(comparison)
+
+
+def _print_gate_result(result: GateResult) -> None:
+    baseline = result.comparison.baseline
+    typer.echo(
+        f"Gate: {'PASSED' if result.passed else 'BLOCKED'} | dataset={baseline.dataset.id} "
+        f"version={baseline.dataset.version} checks={len(result.checks)}"
+    )
+    for check in result.checks:
+        label = _delta_location(check.item_id)
+        state = "n/a" if check.passed is None else ("pass" if check.passed else "fail")
+        typer.echo(
+            f"  {label} | {check.metric.value}: {state} "
+            f"({_format_metric(check.baseline_value)} -> {_format_metric(check.candidate_value)})"
+        )
+
+
+def _warn_gate_violations(result: GateResult) -> None:
+    for violation in result.violations:
+        typer.echo(f"Violation: {violation}", err=True)
+
+
+@evaluation_app.command("gate")
+def evaluation_gate_command(
+    baseline_path: Annotated[Path, typer.Argument(help="Portable baseline JSON file.")],
+    candidate_report_path: Annotated[
+        Path, typer.Argument(help="Complete candidate evaluation report JSON file.")
+    ],
+    policy_path: Annotated[
+        Path | None, typer.Option("--policy", help="Gate policy JSON; default is strict.")
+    ] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the complete gate result as JSON.")
+    ] = False,
+) -> None:
+    """Evaluate a candidate against a baseline and fail closed on policy violations."""
+
+    comparison = _make_comparison(baseline_path, candidate_report_path)
+    policy = _load_policy(policy_path) if policy_path is not None else None
+    try:
+        result = evaluate_gate(comparison, policy)
+    except (ValidationError, ValueError) as error:
+        _fail(f"invalid evaluation gate: {error}", code=2)
+    except Exception as error:
+        _fail(f"could not evaluate gate: {error}")
+
+    _warn_comparison_degradation(comparison)
+    if json_output:
+        typer.echo(result.model_dump_json(indent=2))
+    else:
+        _print_gate_result(result)
+    if not result.passed:
+        _warn_gate_violations(result)
+        raise typer.Exit(code=3)
 
 
 def _warn_evaluation_degradation(report: EvaluationReport) -> None:

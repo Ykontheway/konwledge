@@ -1,0 +1,188 @@
+{
+  "candidate_limit": 50,
+  "cases": [
+    {
+      "evaluated_at": "2026-11-10T00:00:00Z",
+      "item_id": "guide-port-current",
+      "metrics": {
+        "hit_rate": 1.0,
+        "ndcg": 1.0,
+        "no_answer_success": null,
+        "precision": 0.2,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0
+      },
+      "missing_vector_ids": [],
+      "ranked_lineage_ids": [
+        "25c5113c-1edc-590a-b4bc-dd907016eac3"
+      ]
+    },
+    {
+      "evaluated_at": "2026-10-10T12:00:00+08:00",
+      "item_id": "guide-port-historical",
+      "metrics": {
+        "hit_rate": 1.0,
+        "ndcg": 1.0,
+        "no_answer_success": null,
+        "precision": 0.2,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0
+      },
+      "missing_vector_ids": [],
+      "ranked_lineage_ids": [
+        "25c5113c-1edc-590a-b4bc-dd907016eac3"
+      ]
+    },
+    {
+      "evaluated_at": "2026-11-10T00:00:00Z",
+      "item_id": "faq-port-include-stale",
+      "metrics": {
+        "hit_rate": 1.0,
+        "ndcg": 1.0,
+        "no_answer_success": null,
+        "precision": 0.2,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0
+      },
+      "missing_vector_ids": [],
+      "ranked_lineage_ids": [
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e"
+      ]
+    },
+    {
+      "evaluated_at": "2026-11-10T00:00:00Z",
+      "item_id": "faq-port-active-only-no-answer",
+      "metrics": {
+        "hit_rate": null,
+        "ndcg": null,
+        "no_answer_success": true,
+        "precision": null,
+        "recall": null,
+        "reciprocal_rank": null
+      },
+      "missing_vector_ids": [],
+      "ranked_lineage_ids": []
+    },
+    {
+      "evaluated_at": "2026-11-10T00:00:00Z",
+      "item_id": "unknown-term-no-answer",
+      "metrics": {
+        "hit_rate": null,
+        "ndcg": null,
+        "no_answer_success": true,
+        "precision": null,
+        "recall": null,
+        "reciprocal_rank": null
+      },
+      "missing_vector_ids": [],
+      "ranked_lineage_ids": []
+    },
+    {
+      "evaluated_at": "2026-11-10T00:00:00Z",
+      "item_id": "both-sources-port",
+      "metrics": {
+        "hit_rate": 1.0,
+        "ndcg": 1.0,
+        "no_answer_success": null,
+        "precision": 0.4,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0
+      },
+      "missing_vector_ids": [],
+      "ranked_lineage_ids": [
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e",
+        "25c5113c-1edc-590a-b4bc-dd907016eac3"
+      ]
+    }
+  ],
+  "dataset": {
+    "created_at": "2026-11-10T00:00:00Z",
+    "description": "Deterministic retrieval cases for the packaged lifecycle demo corpus.",
+    "id": "52522ebd-b1dc-4ace-824c-f8054c8547af",
+    "items": [
+      {
+        "at": null,
+        "expect_no_answer": false,
+        "expected_lineage_ids": [
+          "25c5113c-1edc-590a-b4bc-dd907016eac3"
+        ],
+        "id": "guide-port-current",
+        "include_stale": false,
+        "query": "监听",
+        "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210"
+      },
+      {
+        "at": "2026-10-10T12:00:00+08:00",
+        "expect_no_answer": false,
+        "expected_lineage_ids": [
+          "25c5113c-1edc-590a-b4bc-dd907016eac3"
+        ],
+        "id": "guide-port-historical",
+        "include_stale": false,
+        "query": "监听",
+        "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210"
+      },
+      {
+        "at": null,
+        "expect_no_answer": false,
+        "expected_lineage_ids": [
+          "f4ca0c2c-0e75-523b-b56a-9d3b388e693e"
+        ],
+        "id": "faq-port-include-stale",
+        "include_stale": true,
+        "query": "监听",
+        "source_id": "a65ad6cd-70c5-5630-8602-d7e073f7f603"
+      },
+      {
+        "at": null,
+        "expect_no_answer": true,
+        "expected_lineage_ids": [],
+        "id": "faq-port-active-only-no-answer",
+        "include_stale": false,
+        "query": "监听",
+        "source_id": "a65ad6cd-70c5-5630-8602-d7e073f7f603"
+      },
+      {
+        "at": null,
+        "expect_no_answer": true,
+        "expected_lineage_ids": [],
+        "id": "unknown-term-no-answer",
+        "include_stale": true,
+        "query": "term-that-does-not-exist-7f3a",
+        "source_id": null
+      },
+      {
+        "at": null,
+        "expect_no_answer": false,
+        "expected_lineage_ids": [
+          "25c5113c-1edc-590a-b4bc-dd907016eac3",
+          "f4ca0c2c-0e75-523b-b56a-9d3b388e693e"
+        ],
+        "id": "both-sources-port",
+        "include_stale": true,
+        "query": "监听",
+        "source_id": null
+      }
+    ],
+    "name": "demo-retrieval",
+    "schema_version": 1,
+    "version": 1
+  },
+  "dataset_hash": "8243bf211e3a089e6b7ea1d5235ba70515c3af96ce434cb5f40735df1ce8788c",
+  "evaluated_at": "2026-11-10T00:00:00Z",
+  "metrics": {
+    "answerable_count": 4,
+    "case_count": 6,
+    "hit_rate": 1.0,
+    "mean_ndcg": 1.0,
+    "mean_precision": 0.25,
+    "mean_recall": 1.0,
+    "mean_reciprocal_rank": 1.0,
+    "no_answer_accuracy": 1.0,
+    "no_answer_count": 2
+  },
+  "mode": "lexical",
+  "rrf_k": 60,
+  "schema_version": 1,
+  "top_k": 5
+}

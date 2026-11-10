@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U15 adds immutable, versioned retrieval-evaluation datasets and read-only reports on top of U14's exact citations and bounded context. The demo frontend remains paused at V2; these increments change only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
+> Status: pre-alpha. U16 adds portable retrieval baselines, deterministic comparisons, and fail-closed regression gates on top of U15's immutable evaluation reports. The demo frontend remains paused at V2; these increments change only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
 
 ## Implemented increments
 
@@ -25,8 +25,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U13 | 2026-11-09 | Transactionally synchronized SQLite FTS5, vector retrieval, deterministic RRF fusion, active-only/source/as-of filtering, missing-vector diagnostics, and search CLI |
 | U14 | 2026-11-10 | Deterministic exact citations, whole-unit context budgets, duplicate/overlap filtering, source-safe JSON records, and context SDK/CLI |
 | U15 | 2026-11-10 | Immutable versioned evaluation sets, retrieval metrics, read-only reports, and evaluation SDK/CLI |
+| U16 | 2026-11-10 | Portable healthy baselines, deterministic report comparison, policy-driven regression gates, and CI-ready exit codes |
 
-Each increment builds on the preceding implementation. This branch contains U01-U15, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
+Each increment builds on the preceding implementation. This branch contains U01-U16, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
 
 ## Why this project
 
@@ -783,8 +784,8 @@ version the entire corpus or vector backend.
 The CLI has no production vector provider. Vector/hybrid evaluation requires an SDK-configured
 `IndexingService` or explicit `--demo-vectors`, which creates one temporary hash index over all
 stored versions for the run and warns that it is not a semantic-quality measurement. Missing
-vectors remain visible per case and are never repaired automatically. U15 adds no thresholds,
-comparisons, or pass/fail gates; those are the U16 frontier.
+vectors remain visible per case and are never repaired automatically. U15 reports are the complete,
+validated candidate input consumed by U16's file-only comparison and gate commands.
 
 ```python
 from konwledge.evaluation import EvaluationSet
@@ -793,6 +794,73 @@ created = library.evaluation.import_set(EvaluationSet.model_validate_json(text))
 report = library.evaluation.run(created.dataset.id, version=1, top_k=5)
 print(report.metrics.mean_recall, report.dataset_hash, report.degraded)
 ```
+
+## Evaluation baselines and regression gates
+
+U16 turns an approved, healthy U15 report into a compact portable baseline, compares a new complete
+report with it, and optionally applies a fail-closed policy. These commands only read and write JSON
+files: they do not open SQLite, initialize a provider, use the network, rerun retrieval, or modify the
+source report.
+
+```bash
+# Capture a complete candidate report from the U15 runner.
+uv run knowledge evaluation run <set-id> --version 1 --top-k 5 --json \
+  -d .konwledge/demo/knowledge.db > candidate.json
+
+# Promote a reviewed healthy report explicitly; existing outputs are never replaced implicitly.
+uv run knowledge evaluation baseline candidate.json --output approved-baseline.json
+uv run knowledge evaluation baseline candidate.json --output approved-baseline.json --overwrite
+
+# Inspect every aggregate and per-case delta, then enforce the strict default or a policy file.
+uv run knowledge evaluation compare approved-baseline.json candidate.json
+uv run knowledge evaluation gate approved-baseline.json candidate.json --json
+uv run knowledge evaluation gate approved-baseline.json candidate.json \
+  --policy examples/evaluation-gate.json
+```
+
+`baseline` validates the complete report and recomputes every metric before creating any output
+parent or file. It refuses degraded reports and existing destinations (including input/output being
+the same path) unless `--overwrite` is explicit, then publishes atomically in the destination
+directory. A baseline keeps dataset scopes, case ranks and scores, but omits hit quotes, source
+locators, document/unit IDs, and absolute corpus paths. Dataset-authored strings such as names and
+queries remain. This makes it portable, not a signed proof that retrieval really ran; gold review
+and baseline replacement are human decisions and are never passed automatically.
+
+`compare` requires exactly the same dataset ID, version, content hash, retrieval mode, `top_k`,
+`candidate_limit`, and `rrf_k`, plus complete cases and recomputed scores. Normal run times may
+differ so monitoring can observe corpus changes; fixed case-level `at` anchors remain fixed. Set
+`require_same_time` in a policy when all effective times must match. For reproducible CI, run both
+sides at a common explicit time such as `--at 2026-11-10T00:00:00Z`.
+
+The default policy covers all six metrics—recall, precision, MRR, nDCG, hit rate, and no-answer
+accuracy—at both aggregate and case scopes with zero allowed absolute drop. Thus an average gain
+cannot hide one bad case. Rules may set an inclusive `min_value`, `max_abs_drop`, and/or
+`max_relative_drop`; all configured numeric checks are conjunctive with an epsilon of `1e-12`.
+Relative thresholds are unit fractions (`0.01` means 1%). Relative drop from a zero baseline is zero,
+while an absolute floor still applies. A metric unavailable for a cohort is `null`, not zero, and its
+check has `passed: null`; a policy producing no applicable numeric checks blocks rather than passing.
+Missing vectors/degraded candidates, time-policy violations, and metric regressions also block.
+
+The stable process exit codes are:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Valid comparison, or a gate that passed |
+| `1` | File I/O or unexpected runtime failure |
+| `2` | Malformed, incomplete, tampered, mismatched, or otherwise invalid input/configuration |
+| `3` | Inputs were valid, but the gate blocked the candidate |
+
+With `--json`, stdout is exactly one parseable baseline, comparison, or `GateResult`, including on
+exit 3; diagnostics and candidate missing-vector IDs stay on stderr. Human gate output labels
+aggregate and `case <item-id>` checks and prints clear violations. Comparison itself always exits 0
+for a valid degraded or regressed candidate because it applies no threshold.
+
+The committed `examples/evaluation-baseline.json` and `examples/evaluation-gate.json` provide the CI
+wiring. CI builds/imports the demo, runs at `2026-11-10T00:00:00Z` with `--top-k 5`, writes the full
+candidate report, and gates it against those files. The normal workflow trigger remains pushes to
+`main` and pull requests. The hash-vector demo tests plumbing only: neither these retrieval metrics
+nor their gates assess source correctness, content quality, generation quality, answer faithfulness,
+or production embedding quality.
 
 ## Demo snapshot
 

@@ -1,0 +1,48 @@
+{
+  "require_same_time": true,
+  "rules": [
+    {
+      "max_abs_drop": 0.0,
+      "max_relative_drop": null,
+      "metric": "recall",
+      "min_value": null,
+      "scope": "both"
+    },
+    {
+      "max_abs_drop": 0.0,
+      "max_relative_drop": null,
+      "metric": "precision",
+      "min_value": null,
+      "scope": "both"
+    },
+    {
+      "max_abs_drop": 0.0,
+      "max_relative_drop": null,
+      "metric": "mrr",
+      "min_value": null,
+      "scope": "both"
+    },
+    {
+      "max_abs_drop": 0.0,
+      "max_relative_drop": null,
+      "metric": "ndcg",
+      "min_value": null,
+      "scope": "both"
+    },
+    {
+      "max_abs_drop": 0.0,
+      "max_relative_drop": null,
+      "metric": "hit_rate",
+      "min_value": null,
+      "scope": "both"
+    },
+    {
+      "max_abs_drop": 0.0,
+      "max_relative_drop": null,
+      "metric": "no_answer_accuracy",
+      "min_value": null,
+      "scope": "both"
+    }
+  ],
+  "schema_version": 1
+}
