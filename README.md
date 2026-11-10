@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U14 adds exact citations and bounded, evidence-only context on top of U13's lifecycle-aware hybrid retrieval. The demo frontend remains paused at V2; these increments change only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
+> Status: pre-alpha. U15 adds immutable, versioned retrieval-evaluation datasets and read-only reports on top of U14's exact citations and bounded context. The demo frontend remains paused at V2; these increments change only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
 
 ## Implemented increments
 
@@ -24,8 +24,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U12 | 2026-11-09 | Deterministic service-port conflict candidates, frozen two-sided evidence, atomic persistence, human review states and audit chain, historical preview and conflict CLI |
 | U13 | 2026-11-09 | Transactionally synchronized SQLite FTS5, vector retrieval, deterministic RRF fusion, active-only/source/as-of filtering, missing-vector diagnostics, and search CLI |
 | U14 | 2026-11-10 | Deterministic exact citations, whole-unit context budgets, duplicate/overlap filtering, source-safe JSON records, and context SDK/CLI |
+| U15 | 2026-11-10 | Immutable versioned evaluation sets, retrieval metrics, read-only reports, and evaluation SDK/CLI |
 
-Each increment builds on the preceding implementation. This branch contains U01-U14, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
+Each increment builds on the preceding implementation. This branch contains U01-U15, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
 
 ## Why this project
 
@@ -136,6 +137,7 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 ├── src/konwledge/
 │   ├── domain/
 │   │   ├── __init__.py
+│   │   ├── evaluation.py
 │   │   └── models.py
 │   ├── embedding/
 │   │   ├── __init__.py
@@ -176,6 +178,11 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   │   ├── citations.py
 │   │   ├── models.py
 │   │   └── service.py
+│   ├── evaluation/
+│   │   ├── __init__.py
+│   │   ├── metrics.py
+│   │   ├── models.py
+│   │   └── service.py
 │   ├── snapshot/
 │   │   ├── __init__.py
 │   │   ├── export.py
@@ -183,6 +190,7 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   ├── storage/
 │   │   ├── __init__.py
 │   │   ├── database.py
+│   │   ├── evaluation.py
 │   │   ├── repository.py
 │   │   ├── tables.py
 │   │   └── unit_of_work.py
@@ -195,6 +203,7 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   ├── snapshot.json        # generated, committed, checked in CI
 │   └── snapshot.schema.json # generated, committed, checked in CI
 ├── examples/
+│   ├── evaluation-demo.json # packaged-demo evaluation gold set
 │   ├── getting-started.md
 │   └── lifecycle.txt
 ├── tests/
@@ -209,7 +218,7 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 └── pyproject.toml
 ```
 
-The remaining modules will be added only when they gain executable behavior: `evaluation`, `providers`, and `api`.
+The remaining modules will be added only when they gain executable behavior: `providers` and `api`.
 
 ## Domain models
 
@@ -731,6 +740,59 @@ schema initialization, and explicit demo mode builds temporary vectors. The gene
 `CitationRepository` remains available for callers who explicitly choose persistence, but
 U14 never writes to it. No evaluation gates, frontend changes, or demo snapshot/schema
 changes are included in this increment.
+
+## Retrieval evaluation
+
+U15 stores evaluation sets as immutable, contiguous versions and runs retrieval against that pinned
+gold version, with a shared default evaluation time, without persisting reports. Build the packaged
+demo first, then import and run its gold set:
+
+```bash
+uv run knowledge demo build
+uv run knowledge evaluation import examples/evaluation-demo.json \
+  -d .konwledge/demo/knowledge.db
+uv run knowledge evaluation list -d .konwledge/demo/knowledge.db --json
+uv run knowledge evaluation show 52522ebd-b1dc-4ace-824c-f8054c8547af --version 1 \
+  -d .konwledge/demo/knowledge.db
+uv run knowledge evaluation export 52522ebd-b1dc-4ace-824c-f8054c8547af --version 1 \
+  --output exported-evaluation.json -d .konwledge/demo/knowledge.db
+uv run knowledge evaluation run 52522ebd-b1dc-4ace-824c-f8054c8547af --version 1 \
+  --top-k 5 -d .konwledge/demo/knowledge.db --json
+```
+
+The JSON file is the complete gold snapshot: its set UUID identifies a logical dataset, `version`
+identifies immutable gold at that point, and stable item IDs identify cases across versions. Each
+case carries its own optional source, historical `at`, and `include_stale` scope; the runner does
+not replace those fields with blanket CLI filters. Imports reject unknown gold lineages/sources.
+Historical and stale cases are therefore compared only within the scope encoded by the author,
+which keeps lifecycle comparisons fair. Re-importing identical content is idempotent; changing an
+existing version is rejected. `list` returns only latest versions, while `history`, `show`, and
+`export` expose exact versions.
+
+Reports are read-only and contain the dataset/hash, full retrieval results, per-case scores, and
+macro aggregates. Recall, MRR, and nDCG use binary lineage matches; duplicate ranked slots do not
+inflate credit. Precision@k always divides by `k`. Answerable aggregates exclude no-answer cases,
+and no-answer accuracy excludes answerable cases, so unavailable aggregates are `null` in JSON
+and `n/a` in human output. A no-answer success means retrieval returned no hits—it does not mean an
+LLM generated a refusal. Lineage matching measures whether the intended knowledge was retrieved;
+it does not prove that an edited fact is correct or that a generated answer is faithful. Gold labels
+still need human review. Reproducible comparisons require the same dataset version, query scopes,
+retrieval settings, corpus versions, and embedding provider/model/index; U15 does not freeze or
+version the entire corpus or vector backend.
+
+The CLI has no production vector provider. Vector/hybrid evaluation requires an SDK-configured
+`IndexingService` or explicit `--demo-vectors`, which creates one temporary hash index over all
+stored versions for the run and warns that it is not a semantic-quality measurement. Missing
+vectors remain visible per case and are never repaired automatically. U15 adds no thresholds,
+comparisons, or pass/fail gates; those are the U16 frontier.
+
+```python
+from konwledge.evaluation import EvaluationSet
+
+created = library.evaluation.import_set(EvaluationSet.model_validate_json(text))
+report = library.evaluation.run(created.dataset.id, version=1, top_k=5)
+print(report.metrics.mean_recall, report.dataset_hash, report.degraded)
+```
 
 ## Demo snapshot
 

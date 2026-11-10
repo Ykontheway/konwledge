@@ -7,6 +7,7 @@ from konwledge.storage.database import (
     create_session_factory,
     create_sqlite_engine,
 )
+from konwledge.storage.evaluation import EvaluationSetRepository
 from konwledge.storage.repository import (
     CitationRepository,
     DocumentRepository,
@@ -24,6 +25,7 @@ __all__ = [
     "ConflictRepository",
     "DocumentRepository",
     "EntityNotFoundError",
+    "EvaluationSetRepository",
     "ImmutableEntityError",
     "KnowledgeUnitRepository",
     "Repository",

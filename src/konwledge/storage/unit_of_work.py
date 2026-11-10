@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from konwledge.storage.conflicts import ConflictRepository
 from konwledge.storage.database import SessionFactory
+from konwledge.storage.evaluation import EvaluationSetRepository
 from konwledge.storage.repository import (
     CitationRepository,
     DocumentRepository,
@@ -32,6 +33,7 @@ class UnitOfWork:
         self.revisions = RevisionRepository(self._session)
         self.citations = CitationRepository(self._session)
         self.conflicts = ConflictRepository(self._session)
+        self.evaluation_sets = EvaluationSetRepository(self._session)
         return self
 
     def __exit__(

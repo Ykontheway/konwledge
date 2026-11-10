@@ -10,6 +10,7 @@ from typing import Annotated, NoReturn
 from uuid import UUID
 
 import typer
+from pydantic import ValidationError
 
 from konwledge import __version__
 from konwledge.application import ImportPathError, KnowledgeLibrary, KnowledgeUnitNotFoundError
@@ -17,6 +18,12 @@ from konwledge.context import assemble_context, validate_budget
 from konwledge.demo import DemoWorkspaceError, build_demo, export_demo
 from konwledge.domain import ConflictStatus, FreshnessPolicy, KnowledgeUnit
 from konwledge.embedding import EmbeddingService, HashEmbeddingProvider
+from konwledge.evaluation import (
+    EvaluationReport,
+    EvaluationService,
+    EvaluationSet,
+    dump_evaluation_set,
+)
 from konwledge.indexing import IndexingService, InMemoryVectorIndex
 from konwledge.lifecycle import (
     DocumentNotFoundError,
@@ -26,7 +33,12 @@ from konwledge.lifecycle import (
 )
 from konwledge.retrieval import RetrievalMode, RetrievalResult, RetrievalService
 from konwledge.snapshot import dump_schema, dump_snapshot
-from konwledge.storage import create_schema, create_session_factory, create_sqlite_engine
+from konwledge.storage import (
+    ImmutableEntityError,
+    create_schema,
+    create_session_factory,
+    create_sqlite_engine,
+)
 
 DEFAULT_DATABASE = Path(".konwledge/knowledge.db")
 
@@ -108,6 +120,23 @@ def _parse_time(value: str | None) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.astimezone()
 
 
+def _build_demo_index(library: KnowledgeLibrary) -> IndexingService:
+    """Build one temporary hash index containing every stored unit version."""
+
+    typer.echo(
+        "Warning: demo hash embeddings test retrieval plumbing, not semantic quality. "
+        "Vectors are temporary and are not persisted.",
+        err=True,
+    )
+    provider = HashEmbeddingProvider()
+    indexing = IndexingService(
+        embedding_service=EmbeddingService(provider),
+        vector_index=InMemoryVectorIndex(dimension=provider.dimension),
+    )
+    indexing.index_units([unit for summary in library.list_documents() for unit in summary.units])
+    return indexing
+
+
 def _perform_retrieval(
     query: str,
     mode: RetrievalMode,
@@ -131,21 +160,7 @@ def _perform_retrieval(
     library = _open_library(database)
     search = library.search
     if demo_vectors:
-        typer.echo(
-            "Warning: demo hash embeddings test retrieval plumbing, not semantic quality. "
-            "Vectors are temporary and are not persisted.",
-            err=True,
-        )
-        provider = HashEmbeddingProvider()
-        indexing = IndexingService(
-            embedding_service=EmbeddingService(provider),
-            vector_index=InMemoryVectorIndex(dimension=provider.dimension),
-        )
-        # Explicit demo setup, separate from the read-only retrieval service.
-        # Historical versions remain searchable without changing U09's index policy.
-        indexing.index_units(
-            [unit for summary in library.list_documents() for unit in summary.units]
-        )
+        indexing = _build_demo_index(library)
         engine = create_sqlite_engine(
             f"sqlite+pysqlite:///{database.expanduser().resolve().as_posix()}"
         )
@@ -762,6 +777,299 @@ def publishable_command(
 
     for state in units:
         typer.echo(f"unit {state.unit.id} status={state.status.value}")
+
+
+evaluation_app = typer.Typer(
+    name="evaluation",
+    help="Manage evaluation datasets and run retrieval regressions.",
+    no_args_is_help=True,
+)
+app.add_typer(evaluation_app, name="evaluation")
+
+
+@evaluation_app.command("import")
+def evaluation_import_command(
+    path: Annotated[Path, typer.Argument(help="JSON file containing the evaluation set.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the imported dataset as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Validate and import one evaluation dataset version."""
+
+    try:
+        content = path.read_text(encoding="utf-8")
+        dataset = EvaluationSet.model_validate_json(content)
+    except (OSError, UnicodeError, ValidationError) as error:
+        _fail(f"could not parse evaluation set: {error}", code=2)
+
+    library = _open_library(database)
+    try:
+        result = library.evaluation.import_set(dataset)
+    except (ImmutableEntityError, ValueError) as error:
+        _fail(str(error))
+
+    if json_output:
+        typer.echo(dump_evaluation_set(result.dataset), nl=False)
+        return
+
+    action = "imported" if result.created else "existing"
+    typer.echo(
+        f"{action}: {result.dataset.name} v{result.dataset.version} ({result.dataset.id}) | "
+        f"items={len(result.dataset.items)} hash={result.dataset.content_hash[:12]}"
+    )
+
+
+@evaluation_app.command("list")
+def evaluation_list_command(
+    json_output: Annotated[bool, typer.Option("--json", help="Output the list as JSON.")] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """List the latest version of each evaluation dataset."""
+
+    library = _open_library(database)
+    datasets = library.evaluation.list()
+
+    if json_output:
+        typer.echo(json.dumps([d.model_dump(mode="json") for d in datasets], indent=2))
+        return
+
+    if not datasets:
+        typer.echo("No evaluation datasets found.")
+        return
+
+    for dataset in datasets:
+        typer.echo(
+            f"{dataset.id} | v{dataset.version:<3} | {dataset.name} | "
+            f"items={len(dataset.items)} hash={dataset.content_hash[:12]}"
+        )
+
+
+@evaluation_app.command("show")
+def evaluation_show_command(
+    set_id: Annotated[UUID, typer.Argument(help="Evaluation set UUID.")],
+    version: Annotated[
+        int | None, typer.Option("--version", min=1, help="Explicit version.")
+    ] = None,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show one evaluation dataset version in canonical JSON format."""
+
+    library = _open_library(database)
+    try:
+        dataset = library.evaluation.get(set_id, version=version)
+    except LookupError as error:
+        _fail(str(error))
+
+    typer.echo(dump_evaluation_set(dataset), nl=False)
+
+
+@evaluation_app.command("history")
+def evaluation_history_command(
+    set_id: Annotated[UUID, typer.Argument(help="Evaluation set UUID.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the history as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show the version history of one evaluation dataset."""
+
+    library = _open_library(database)
+    try:
+        history = library.evaluation.history(set_id)
+    except LookupError as error:
+        _fail(str(error))
+
+    if json_output:
+        typer.echo(json.dumps([d.model_dump(mode="json") for d in history], indent=2))
+        return
+
+    typer.echo(f"dataset: {set_id} ({history[0].name})")
+    typer.echo(f"versions: {len(history)}")
+    for dataset in history:
+        typer.echo(
+            f"  v{dataset.version:<3} | hash={dataset.content_hash[:12]} | "
+            f"items={len(dataset.items)} at {dataset.created_at.isoformat()}"
+        )
+
+
+@evaluation_app.command("export")
+def evaluation_export_command(
+    set_id: Annotated[UUID, typer.Argument(help="Evaluation set UUID.")],
+    version: Annotated[
+        int | None, typer.Option("--version", min=1, help="Explicit version.")
+    ] = None,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write to file instead of stdout.")
+    ] = None,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Export one evaluation dataset version to canonical JSON."""
+
+    library = _open_library(database)
+    try:
+        dataset = library.evaluation.get(set_id, version=version)
+    except LookupError as error:
+        _fail(str(error))
+
+    content = dump_evaluation_set(dataset)
+    if output:
+        try:
+            output.write_text(content, encoding="utf-8")
+            typer.echo(f"exported: {output}")
+        except OSError as error:
+            _fail(f"could not write output: {error}")
+    else:
+        typer.echo(content, nl=False)
+
+
+@evaluation_app.command("run")
+def evaluation_run_command(
+    set_id: Annotated[UUID, typer.Argument(help="Evaluation set UUID.")],
+    version: Annotated[
+        int | None, typer.Option("--version", min=1, help="Explicit version.")
+    ] = None,
+    mode: Annotated[
+        RetrievalMode, typer.Option("--mode", help="Retrieval route.")
+    ] = RetrievalMode.LEXICAL,
+    top_k: Annotated[int, typer.Option("--top-k", min=1, help="Maximum results.")] = 5,
+    candidate_limit: Annotated[int | None, typer.Option("--candidate-limit", min=1)] = None,
+    rrf_k: Annotated[int, typer.Option("--rrf-k", min=1)] = 60,
+    at: AtOption = None,
+    demo_vectors: Annotated[
+        bool,
+        typer.Option(
+            "--demo-vectors", help="Build temporary offline hash vectors; not semantic embeddings."
+        ),
+    ] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the complete report as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Run retrieval for every item in a dataset and compute aggregate metrics."""
+
+    moment = _parse_time(at)
+    if candidate_limit is not None and candidate_limit < top_k:
+        _fail("candidate_limit must be greater than or equal to top_k", code=2)
+    if demo_vectors and mode is RetrievalMode.LEXICAL:
+        _fail("--demo-vectors requires --mode vector or hybrid", code=2)
+
+    library = _open_library(database)
+    evaluation = library.evaluation
+
+    if demo_vectors:
+        indexing = _build_demo_index(library)
+        engine = create_sqlite_engine(
+            f"sqlite+pysqlite:///{database.expanduser().resolve().as_posix()}"
+        )
+        try:
+            # Re-construct service with temporary indexing
+            evaluation = EvaluationService(
+                create_session_factory(engine),
+                RetrievalService(create_session_factory(engine), indexing_service=indexing),
+            )
+            report = evaluation.run(
+                set_id,
+                version=version,
+                mode=mode,
+                top_k=top_k,
+                candidate_limit=candidate_limit,
+                rrf_k=rrf_k,
+                at=moment,
+            )
+        except (LookupError, ValueError, RuntimeError) as error:
+            _fail(str(error), code=2 if isinstance(error, ValueError) else 1)
+        finally:
+            engine.dispose()
+    else:
+        try:
+            report = evaluation.run(
+                set_id,
+                version=version,
+                mode=mode,
+                top_k=top_k,
+                candidate_limit=candidate_limit,
+                rrf_k=rrf_k,
+                at=moment,
+            )
+        except LookupError as error:
+            _fail(str(error))
+        except ValueError as error:
+            _fail(str(error), code=2)
+        except RuntimeError as error:
+            _fail(str(error))
+
+    _warn_evaluation_degradation(report)
+    if json_output:
+        typer.echo(report.model_dump_json(indent=2))
+        return
+
+    _print_evaluation_report(report)
+
+
+def _warn_evaluation_degradation(report: EvaluationReport) -> None:
+    for case in report.results:
+        if not case.retrieval.degraded:
+            continue
+        ids = ",".join(str(unit_id) for unit_id in case.retrieval.missing_vector_ids)
+        typer.echo(
+            f"Warning: evaluation set {report.dataset.id} item {case.item_id}: "
+            f"{len(case.retrieval.missing_vector_ids)} eligible unit(s) lack usable vectors; "
+            f"vector recall is incomplete. missing_vector_ids={ids}",
+            err=True,
+        )
+
+
+def _print_evaluation_report(report: EvaluationReport) -> None:
+    typer.echo(
+        f"Evaluation: {report.dataset.name} v{report.dataset.version} "
+        f"hash={report.dataset_hash[:12]}"
+    )
+    typer.echo(
+        f"Settings: mode={report.mode.value} top_k={report.top_k} "
+        f"candidate_limit={report.candidate_limit} rrf_k={report.rrf_k} "
+        f"at={report.evaluated_at.isoformat()}"
+    )
+
+    m = report.metrics
+    typer.echo(
+        f"Cases: total={m.case_count} answerable={m.answerable_count} no-answer={m.no_answer_count}"
+    )
+
+    def fmt(val: float | None) -> str:
+        return f"{val:.4f}" if val is not None else "n/a"
+
+    typer.echo(
+        f"Metrics: Recall={fmt(m.mean_recall)} Precision={fmt(m.mean_precision)} "
+        f"MRR={fmt(m.mean_reciprocal_rank)} nDCG={fmt(m.mean_ndcg)}"
+    )
+    typer.echo(
+        f"Summary: HitRate={fmt(m.hit_rate)} NoAnswerAcc={fmt(m.no_answer_accuracy)} "
+        f"degraded={str(report.degraded).lower()}"
+    )
+
+    if report.degraded:
+        typer.echo(
+            f"Vector coverage: missing={len(report.missing_vector_ids)} "
+            "(see per-case stderr warnings)"
+        )
+
+    item_by_id = {item.id: item for item in report.dataset.items}
+    for res in report.results:
+        case_status = "no-answer" if item_by_id[res.item_id].expect_no_answer else "answerable"
+        no_answer = (
+            "n/a"
+            if res.metrics.no_answer_success is None
+            else str(res.metrics.no_answer_success).lower()
+        )
+        line = (
+            f"  {res.item_id:<20} | status={case_status} recall={fmt(res.metrics.recall)} "
+            f"precision={fmt(res.metrics.precision)} mrr={fmt(res.metrics.reciprocal_rank)} "
+            f"ndcg={fmt(res.metrics.ndcg)} hit={fmt(res.metrics.hit_rate)} "
+            f"no_answer={no_answer} degraded={str(res.retrieval.degraded).lower()}"
+        )
+        typer.echo(line)
 
 
 freshness_app = typer.Typer(

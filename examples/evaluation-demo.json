@@ -1,0 +1,73 @@
+{
+  "created_at": "2026-11-10T00:00:00Z",
+  "description": "Deterministic retrieval cases for the packaged lifecycle demo corpus.",
+  "id": "52522ebd-b1dc-4ace-824c-f8054c8547af",
+  "items": [
+    {
+      "at": null,
+      "expect_no_answer": false,
+      "expected_lineage_ids": [
+        "25c5113c-1edc-590a-b4bc-dd907016eac3"
+      ],
+      "id": "guide-port-current",
+      "include_stale": false,
+      "query": "监听",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210"
+    },
+    {
+      "at": "2026-10-10T12:00:00+08:00",
+      "expect_no_answer": false,
+      "expected_lineage_ids": [
+        "25c5113c-1edc-590a-b4bc-dd907016eac3"
+      ],
+      "id": "guide-port-historical",
+      "include_stale": false,
+      "query": "监听",
+      "source_id": "e478f8ba-1ffc-516a-a4cd-0ae7b8a74210"
+    },
+    {
+      "at": null,
+      "expect_no_answer": false,
+      "expected_lineage_ids": [
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e"
+      ],
+      "id": "faq-port-include-stale",
+      "include_stale": true,
+      "query": "监听",
+      "source_id": "a65ad6cd-70c5-5630-8602-d7e073f7f603"
+    },
+    {
+      "at": null,
+      "expect_no_answer": true,
+      "expected_lineage_ids": [],
+      "id": "faq-port-active-only-no-answer",
+      "include_stale": false,
+      "query": "监听",
+      "source_id": "a65ad6cd-70c5-5630-8602-d7e073f7f603"
+    },
+    {
+      "at": null,
+      "expect_no_answer": true,
+      "expected_lineage_ids": [],
+      "id": "unknown-term-no-answer",
+      "include_stale": true,
+      "query": "term-that-does-not-exist-7f3a",
+      "source_id": null
+    },
+    {
+      "at": null,
+      "expect_no_answer": false,
+      "expected_lineage_ids": [
+        "25c5113c-1edc-590a-b4bc-dd907016eac3",
+        "f4ca0c2c-0e75-523b-b56a-9d3b388e693e"
+      ],
+      "id": "both-sources-port",
+      "include_stale": true,
+      "query": "监听",
+      "source_id": null
+    }
+  ],
+  "name": "demo-retrieval",
+  "schema_version": 1,
+  "version": 1
+}

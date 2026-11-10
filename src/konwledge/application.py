@@ -21,6 +21,7 @@ from konwledge.domain import (
     Source,
     SourceKind,
 )
+from konwledge.evaluation import EvaluationService
 from konwledge.indexing import IndexingService
 from konwledge.ingestion import (
     FileIngestionService,
@@ -195,6 +196,7 @@ class KnowledgeLibrary:
         self._retrieval = RetrievalService(
             session_factory, indexing_service=indexing_service, clock=clock
         )
+        self._evaluation = EvaluationService(session_factory, self._retrieval, clock=self._clock)
         self._context = ContextService(self._retrieval)
 
     @property
@@ -214,6 +216,12 @@ class KnowledgeLibrary:
         """Deterministic conflict candidates, frozen evidence, and human review."""
 
         return self._conflicts
+
+    @property
+    def evaluation(self) -> EvaluationService:
+        """Immutable evaluation datasets and read-only retrieval scoring."""
+
+        return self._evaluation
 
     @property
     def retrieval(self) -> RetrievalService:

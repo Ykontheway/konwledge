@@ -176,3 +176,21 @@ class ConflictRow(Base):
     right_document_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     right_unit_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
+class EvaluationSetRow(Base):
+    """One complete immutable evaluation dataset version."""
+
+    __tablename__ = "evaluation_sets"
+    __table_args__ = (
+        CheckConstraint("version >= 1"),
+        CheckConstraint("length(content_hash) = 64"),
+        CheckConstraint("content_hash NOT GLOB '*[^0-9a-f]*'"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
