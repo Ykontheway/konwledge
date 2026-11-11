@@ -15,8 +15,8 @@ def invoke(*arguments: str) -> Result:
     return runner.invoke(app, list(arguments))
 
 
-def test_package_has_pre_alpha_version() -> None:
-    assert __version__ == "0.0.0"
+def test_package_has_alpha_version() -> None:
+    assert __version__ == "0.1.0"
 
 
 def test_cli_without_arguments_prints_help() -> None:
@@ -33,7 +33,7 @@ def test_cli_reports_version() -> None:
     result = invoke("--version")
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == "knowledge 0.0.0"
+    assert result.stdout.strip() == "knowledge 0.1.0"
 
 
 def test_empty_list_initializes_database_and_is_friendly(tmp_path: Path) -> None:

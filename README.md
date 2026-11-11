@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: pre-alpha. U16 adds portable retrieval baselines, deterministic comparisons, and fail-closed regression gates on top of U15's immutable evaluation reports. The demo frontend remains paused at V2; these increments change only the Python core and CLI. The deterministic V1 snapshot and its schema stay unchanged.
+> Status: **v0.1.0 release candidate prepared (alpha)**. U17 closes local release readiness with coherent version metadata, a lazy root API, installed-distribution verification, and maintainer/contributor documentation. The version has not been published: there is no `v0.1.0` tag, GitHub Release, PyPI release, or verified public demo deployment. Per the 2026-11-06 scope decision, frontend work remains paused at V2; V3/V4, live-page publication, and further deployment are deferred.
 
 ## Implemented increments
 
@@ -26,8 +26,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U14 | 2026-11-10 | Deterministic exact citations, whole-unit context budgets, duplicate/overlap filtering, source-safe JSON records, and context SDK/CLI |
 | U15 | 2026-11-10 | Immutable versioned evaluation sets, retrieval metrics, read-only reports, and evaluation SDK/CLI |
 | U16 | 2026-11-10 | Portable healthy baselines, deterministic report comparison, policy-driven regression gates, and CI-ready exit codes |
+| U17 | 2026-11-11 | v0.1.0 metadata coherence, lazy root API, isolated wheel/sdist verification, and release/contributor/architecture documentation |
 
-Each increment builds on the preceding implementation. This branch contains U01-U16, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend work is paused while the core lifecycle slices advance.
+Each increment builds on the preceding implementation. This branch contains U01-U17, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend development and deployment are paused; V3/V4 and publication of a live page are not part of this release-readiness closure.
 
 ## Why this project
 
@@ -52,22 +53,51 @@ The initial roadmap is split into small, testable uploads:
 | Knowledge CI | Days 41–45 | Versioned evaluation set and regression gates |
 | Optional integrations | Days 46–60 | Model API, conversations, database schemas, UI, and MCP |
 
-The planned public checkpoints are `v0.0.1-mvp`, `v0.1.0`, and `v0.2.0`.
+The roadmap names `v0.0.1-mvp`, `v0.1.0`, and `v0.2.0` as public checkpoints. A version appearing in source metadata or this roadmap does not mean that its tag or package has been published.
 
-## Quick start
+## Installation and quick start
 
-Konwledge requires Python 3.11 or newer and [uv](https://docs.astral.sh/uv/).
+Konwledge requires Python 3.11 or newer and an SQLite build with FTS5 enabled. The release candidate is not published on PyPI; install it from a clone:
 
 ```bash
-uv sync --dev
-uv run knowledge --version
+python -m pip install .
+knowledge --version
+```
+
+For a locally built artifact instead:
+
+```bash
+uv build
+python -m pip install dist/konwledge-0.1.0-py3-none-any.whl
 ```
 
 Expected output:
 
 ```text
-knowledge 0.0.0
+knowledge 0.1.0
 ```
+
+`python -m konwledge --version` invokes the same CLI. The `konwledge` console script remains a legacy alias; new examples use `knowledge`.
+
+### End-to-end demo: import to regression gate
+
+This recipe builds the packaged eight-step demo, searches current knowledge, assembles cited context, imports the committed gold set, writes a candidate report at the baseline's fixed time, and applies the committed policy:
+
+```bash
+uv sync --locked --dev
+uv run knowledge demo build --force
+uv run knowledge search "监听" -d .konwledge/demo/knowledge.db
+uv run knowledge context "监听" --max-units 2 -d .konwledge/demo/knowledge.db
+uv run knowledge evaluation import examples/evaluation-demo.json \
+  -d .konwledge/demo/knowledge.db
+uv run knowledge evaluation run 52522ebd-b1dc-4ace-824c-f8054c8547af \
+  --version 1 --mode lexical --top-k 5 --candidate-limit 50 --rrf-k 60 \
+  --at 2026-11-10T00:00:00Z -d .konwledge/demo/knowledge.db --json > candidate.json
+uv run knowledge evaluation gate examples/evaluation-baseline.json candidate.json \
+  --policy examples/evaluation-gate.json --json
+```
+
+A passing gate exits `0`; a valid regression exits `3`. Invalid input exits `2`, and runtime or file I/O failures exit `1`. In the packaged story, the active guide uses port `8080`; the FAQ's `8000` answer is stale and excluded by default. Baseline replacement is an intentional review action, never an automatic CI side effect. The packaged hash embedding provider and demo vectors exercise plumbing only; they are not semantic-quality or production-performance evidence.
 
 ## Import CLI
 
@@ -96,15 +126,22 @@ These paths are covered by `.gitignore`.
 
 ## Development checks
 
-Run the same checks used by GitHub Actions:
+Run the Python checks used by GitHub Actions:
 
 ```bash
+uv sync --locked --dev
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy src tests
+uv run mypy src tests scripts
 uv run pytest --cov=konwledge --cov-report=term-missing
 uv run knowledge demo build --force && uv run knowledge demo export --check
+uv run pytest tests/test_evaluation_gate_demo.py
+uv run python scripts/verify_distribution.py
 ```
+
+The last command builds and inspects both the wheel and source distribution, installs each into a fresh isolated environment outside the checkout, and smoke-tests the installed root API, both CLI aliases, packaged demo resources, retrieval/context, evaluation, and gate behavior. Ordinary `pytest` runs against the checkout and does not replace that installed-artifact check. These checks require no provider credentials or network service.
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main`; a push only to a feature branch does not trigger it. The workflow also runs the fixed-time U16 gate against the committed baseline and policy. CI may upload build artifacts for inspection, but it does not publish a package or approve a baseline change.
 
 The demo site has its own CI job:
 
@@ -114,12 +151,7 @@ pnpm install --frozen-lockfile
 pnpm verify        # typecheck → schema sync → Vitest → production build
 ```
 
-Both the CI job and the Pages deployment run `pnpm verify`; publishing stops if any
-check fails. Keep `strict`, `noUnusedLocals`, and `noUnusedParameters` enabled. During
-page development, run `pnpm typecheck` after each component change, then `pnpm verify`
-before committing. Vitest covers snapshot mapping, Unicode highlight ranges, and
-server-rendering smoke tests for the three demo pages; it does not replace browser
-interaction or visual testing.
+The repository contains a separate site verification job and a Pages workflow configuration. Both use `pnpm verify`, so a future publication attempt is blocked if verification fails. No public Pages deployment was performed or verified for U17, and further frontend work is paused. Keep `strict`, `noUnusedLocals`, and `noUnusedParameters` enabled. During page development, run `pnpm typecheck` after each component change, then `pnpm verify` before committing. Vitest covers snapshot mapping, Unicode highlight ranges, and server-rendering smoke tests for the three demo pages; it does not replace browser interaction or visual testing.
 
 The optional LanceDB adapter has its own CI job. Run it locally with:
 
@@ -207,19 +239,54 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   ├── evaluation-demo.json # packaged-demo evaluation gold set
 │   ├── getting-started.md
 │   └── lifecycle.txt
+├── scripts/
+│   ├── installed_smoke.py    # smoke checks run from isolated installations
+│   └── verify_distribution.py
+├── docs/
+│   ├── architecture.md
+│   └── releasing.md
 ├── tests/
-├── web/                     # static demo site (V2)
+├── web/                     # static demo site (V2; further frontend work paused)
 │   ├── scripts/gen-types.mjs
 │   └── src/
 │       ├── lib/             # snapshot views, code-point slicing, formatting (+ Vitest)
 │       ├── types/snapshot.gen.ts
 │       └── *Page.tsx
+├── CHANGELOG.md
+├── CONTRIBUTING.md
 ├── LICENSE
 ├── README.md
 └── pyproject.toml
 ```
 
 The remaining modules will be added only when they gain executable behavior: `providers` and `api`.
+
+## Public Python API
+
+`KnowledgeLibrary` is the root application facade and is lazily exported, so importing `konwledge` does not eagerly initialize application services or a database:
+
+```python
+from konwledge import KnowledgeLibrary, __version__
+from konwledge.storage import create_schema, create_session_factory, create_sqlite_engine
+
+engine = create_sqlite_engine("sqlite+pysqlite:///knowledge.db")
+create_schema(engine)
+library = KnowledgeLibrary(create_session_factory(engine))
+
+results = library.search("deployment")
+packet = library.build_context("deployment", max_units=3)
+```
+
+The wheel and source distribution include a PEP 561 `py.typed` marker so installed consumers can use the inline type annotations.
+
+The established typed models and evaluation helpers remain importable from `konwledge.domain` and `konwledge.evaluation`. Subpackages such as `storage`, `ingestion`, `indexing`, `retrieval`, and `context` expose lower-level composition points used by the facade and tests. At alpha, those lower-level boundaries—and even the core APIs as capabilities are added—may change between minor releases; v0.1.0 does not promise complete backward compatibility.
+
+For design and project workflow details, see:
+
+- [Architecture](docs/architecture.md)
+- [Contributing](CONTRIBUTING.md)
+- [Release process](docs/releasing.md)
+- [Changelog](CHANGELOG.md)
 
 ## Domain models
 
@@ -309,7 +376,7 @@ assert embedding_cache_key("hash", "sha256-v1", "alpha") == service.cache_key("a
 
 ## Vector index
 
-U08 turns embeddings into a searchable store. The `VectorIndex` protocol captures `upsert`, `delete`, `get`, `search`, and `rebuild`; the default `InMemoryVectorIndex` ships a dependency-free cosine search with stable id-tiebreak ranking and metadata filters (`{"status": "active"}`, `{"tags": {"in": [...]}}`, `{"status": {"not": [...]}}`). An optional `LanceVectorIndex` adapter targets LanceDB when installed with `uv sync --extra lancedb` (or `pip install "konwledge[lancedb]"`); the module imports cleanly without the dependency and raises a clear install hint only when the adapter is instantiated. The adapter uses an explicit Arrow schema, so empty rebuilds keep the vector dimension, filtered searches scan every row instead of a fixed oversampling window, and reopening a table with another dimension fails with a clear error.
+U08 turns embeddings into a searchable store. The `VectorIndex` protocol captures `upsert`, `delete`, `get`, `search`, and `rebuild`; the default `InMemoryVectorIndex` ships a dependency-free cosine search with stable id-tiebreak ranking and metadata filters (`{"status": "active"}`, `{"tags": {"in": [...]}}`, `{"status": {"not": [...]}}`). An optional `LanceVectorIndex` adapter targets LanceDB when the local checkout is synchronized with `uv sync --extra lancedb`; the module imports cleanly without the dependency and raises a clear install hint only when the adapter is instantiated. The adapter uses an explicit Arrow schema, so empty rebuilds keep the vector dimension, filtered searches scan every row instead of a fixed oversampling window, and reopening a table with another dimension fails with a clear error.
 
 `IndexingService` wires the embedding service and the vector index together so you can embed and persist `KnowledgeUnit` objects in one call, run top-K searches by raw text, and rebuild the entire index deterministically:
 
@@ -864,8 +931,7 @@ or production embedding quality.
 
 ## Demo snapshot
 
-The demo site (V2-V4) is a static page that only renders data; every number it shows comes from a
-JSON snapshot exported by the CLI. V1 provides that data pipeline.
+The current V2 demo site is a static page that only renders data; every number it shows comes from a JSON snapshot exported by the CLI. V1 provides that data pipeline. Planned V3/V4 lifecycle and evaluation views are deferred.
 
 ```bash
 uv run knowledge demo build            # plays the story into .konwledge/demo/
@@ -929,8 +995,7 @@ pnpm gen:types     # regenerate src/types/snapshot.gen.ts after a schema change
 - **Ranges match the CLI.** Snapshot offsets are Python code points, so the site slices by code
   point, not UTF-16 unit; Vitest checks that every unit's range reproduces its stored text and that
   the segments tile each document exactly.
-- **Deployed by Actions.** `.github/workflows/deploy-demo.yml` builds `web/` and publishes it to
-  GitHub Pages on every push to `main` (enable *Settings → Pages → Source: GitHub Actions* once).
+- **Deployment is deferred.** `.github/workflows/deploy-demo.yml` contains a GitHub Pages build configuration, but U17 did not trigger or verify a public deployment. Treat site publication as a separate, explicitly approved maintainer action.
 
 ## License
 
