@@ -7,6 +7,7 @@ import asyncio
 import importlib.util
 import json
 import site
+import subprocess
 import sys
 import tempfile
 from collections.abc import MutableMapping, Sequence
@@ -27,6 +28,30 @@ from konwledge.context import ContextPacket
 from konwledge.storage import create_schema, create_session_factory, create_sqlite_engine
 
 KEY = "isolated-api-smoke-key"
+
+
+def run_cli(
+    root: Path,
+    *arguments: str,
+    input_text: str | None = None,
+    expected: int = 0,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        [sys.executable, "-I", "-m", "konwledge", *arguments],
+        cwd=root,
+        input=input_text,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=120,
+        check=False,
+    )
+    if result.returncode != expected:
+        raise AssertionError(
+            f"installed CLI returned {result.returncode}, expected {expected}: "
+            f"{' '.join(arguments)}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+    return result
 
 
 async def request(
@@ -85,6 +110,26 @@ def verify_routes(application: FastAPI) -> None:
     assert status == 200
     packet = ContextPacket.model_validate_json(json.dumps(native))
     assert len(packet.blocks) == 1 and "精确证据" in packet.blocks[0].citation.quote
+    status, approved = asyncio.run(
+        request(
+            application,
+            "POST",
+            "/v1/context",
+            {"query": "api-approved-token", "as_of": "2100-01-01T00:00:00Z"},
+        )
+    )
+    assert (
+        status == 200 and len(ContextPacket.model_validate_json(json.dumps(approved)).blocks) == 1
+    )
+    status, rejected = asyncio.run(
+        request(
+            application,
+            "POST",
+            "/v1/context",
+            {"query": "api-rejected-token", "as_of": "2100-01-01T00:00:00Z"},
+        )
+    )
+    assert status == 200 and not ContextPacket.model_validate_json(json.dumps(rejected)).blocks
     status, chat = asyncio.run(
         request(
             application,
@@ -128,6 +173,85 @@ def verify(root: Path) -> None:
     library = KnowledgeLibrary(
         create_session_factory(engine), clock=lambda: datetime(2026, 11, 1, tzinfo=UTC)
     )
+    conversation = json.dumps(
+        {
+            "schema_version": 1,
+            "conversation_id": "api-u19",
+            "version": 1,
+            "messages": [
+                {
+                    "id": "approved",
+                    "role": "user",
+                    "content": "事实：api-approved-token 已审核。",
+                },
+                {
+                    "id": "rejected",
+                    "role": "assistant",
+                    "content": "决策：api-rejected-token 不采用。",
+                },
+            ],
+            "metadata": {"synthetic": True},
+        },
+        ensure_ascii=False,
+    )
+    imported = run_cli(
+        root,
+        "conversation",
+        "import",
+        "-",
+        "--json",
+        "-d",
+        str(database),
+        input_text=conversation,
+    )
+    imported_payload = json.loads(imported.stdout)
+    candidates = imported_payload["candidates"]
+    assert len(candidates) == 2 and imported_payload["created"] is True
+    approved_id, rejected_id = (candidate["id"] for candidate in candidates)
+    run_cli(
+        root,
+        "candidate",
+        "approve",
+        approved_id,
+        "--reviewer",
+        "api-smoke",
+        "-d",
+        str(database),
+    )
+    run_cli(
+        root,
+        "candidate",
+        "reject",
+        rejected_id,
+        "--reviewer",
+        "api-smoke",
+        "--reason",
+        "not durable",
+        "-d",
+        str(database),
+    )
+    repeated = run_cli(
+        root,
+        "conversation",
+        "import",
+        "-",
+        "--json",
+        "-d",
+        str(database),
+        input_text=conversation,
+    )
+    assert json.loads(repeated.stdout)["created"] is False
+    for candidate_id in (approved_id, rejected_id):
+        history = run_cli(
+            root,
+            "candidate",
+            "history",
+            candidate_id,
+            "--json",
+            "-d",
+            str(database),
+        )
+        assert len(json.loads(history.stdout)) == 1
     writes: list[str] = []
 
     def capture_sql(
@@ -201,6 +325,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "installed_api",
                     "no_sdks",
                     "asgi_routes",
+                    "conversation_approval_readonly",
                     "readonly",
                     "cli_startup_disposal",
                 ],

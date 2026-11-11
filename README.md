@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API、`knowledge serve`、官方 OpenAI/LangChain SDK 验收及 core-only/[api] 隔离分发验证，版本号仍为 `0.1.0`。本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。按 2026-11-06 范围决定，前端停留 V2，V3/V4 与部署继续暂停。
+> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API 与隔离分发验证；U19（**Unreleased**）加入对话版本导入、确定性候选提取和人工终态审核。版本号仍为 `0.1.0`，本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。前端停留 V2，V3/V4 与部署继续暂停。
 
 ## Implemented increments
 
@@ -28,8 +28,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U16 | 2026-11-10 | Portable healthy baselines, deterministic report comparison, policy-driven regression gates, and CI-ready exit codes |
 | U17 | 2026-11-11 | v0.1.0 metadata coherence, lazy root API, isolated wheel/sdist verification, and release/contributor/architecture documentation |
 | U18 | Unreleased | 可选 `[api]` 本机只读 HTTP、`serve` 安全启动、OpenAI/LangChain SDK 验收、可选依赖及隔离分发验证（无版本提升） |
+| U19 | Unreleased | 不可变对话版本、确定性候选提取、人工批准/拒绝审计，以及 conversation/candidate CLI（无版本提升） |
 
-Each increment builds on the preceding implementation. This branch contains U01-U18, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend development and deployment are paused; V3/V4 and publication of a live page are not part of this release-readiness closure.
+Each increment builds on the preceding implementation. This branch contains U01-U19, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend development and deployment are paused; V3/V4 and publication of a live page are not part of this release-readiness closure.
 
 ## Why this project
 
@@ -112,6 +113,20 @@ knowledge serve --host 127.0.0.1 --port 8000 --database .konwledge/knowledge.db
 
 核心安装的 help/version 不依赖 `[api]`。默认 dev 组为测试和类型检查安装 API、HTTPX 与客户端 SDK；SDK 不进入 wheel 运行时依赖。详见 [API 请求 schema、鉴权、官方 SDK 示例与验收](docs/api.md)。分发验证对 wheel/sdist 分别先跑 core-only，再跑 `[api]` 隔离 ASGI smoke，不监听端口或请求外部 provider。
 
+## 对话导入与人工审核（U19，Unreleased）
+
+```bash
+knowledge conversation import examples/conversation-demo.json -d .konwledge/knowledge.db
+knowledge candidate list --json -d .konwledge/knowledge.db
+knowledge candidate approve <candidate-uuid> --reviewer alice@example.com \
+  --reason "已对照来源" -d .konwledge/knowledge.db
+knowledge search "深色模式" -d .konwledge/knowledge.db
+```
+
+导入先在数据库外校验 10 MiB 上限、UTF-8、重复 key 和严格 schema。系统只从 `user`/`assistant` 的显式 `Fact:`、`事实：`、`Decision:`、`决策：` 单行提取候选，不调用 LLM，也不自动认定内容真实。候选默认是 `pending`，批准后才产生可检索知识；拒绝不会产生知识。审核决定是终态，新版本不会自动撤销旧版本已批准的事实。`--reviewer` 只用于审计归属，不提供身份认证。
+
+`conversation show --json`、导出、候选详情和数据库可能保留原始私密聊天。命令、完整 schema、默认 latest 版本规则和退出码见 [对话导入与人工审核](docs/conversations.md)。U19 不修改 U18 的只读 HTTP API，也不增加运行时依赖。
+
 ## Import CLI
 
 导入等已有 CLI 命令会自动创建 SQLite schema 与父目录；`serve` 例外，必须指向已有数据库文件。
@@ -183,8 +198,10 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   ├── api/                # 可选本机上下文 HTTP 传输（U18）
 │   ├── domain/
 │   │   ├── __init__.py
+│   │   ├── conversations.py
 │   │   ├── evaluation.py
 │   │   └── models.py
+│   ├── conversations/       # 对话导入、确定性提取与人工终态审核（U19）
 │   ├── embedding/
 │   │   ├── __init__.py
 │   │   ├── providers.py
@@ -299,6 +316,7 @@ The established typed models and evaluation helpers remain importable from `konw
 For design and project workflow details, see:
 
 - [Architecture](docs/architecture.md)
+- [对话导入与人工审核](docs/conversations.md)
 - [Contributing](CONTRIBUTING.md)
 - [Release process](docs/releasing.md)
 - [Changelog](CHANGELOG.md)
@@ -982,6 +1000,10 @@ The embedding numbers above come from a real `IndexingService` run during the bu
   when it reproduces the stored checksum. File URIs are made relative so no machine paths leak.
 - **A versioned contract.** `LibrarySnapshot` (Pydantic) is the single contract with the front end;
   `demo/snapshot.schema.json` is generated from it. Breaking changes bump `schema_version`.
+  Snapshot V1 keeps its origin-kind enum frozen at `url`, `file`, `repository`, and `manual` even as
+  the domain grows. Approved `conversation` sources retain that kind and provenance, so V1 export
+  fails explicitly instead of omitting or reclassifying them. The committed goldens and generated
+  frontend types were not regenerated for U19.
 - **Guarded against drift.** `tests/test_demo.py` compares a fresh export with the committed golden
   files, validates the snapshot against the schema, and CI repeats the check through the CLI.
 

@@ -29,6 +29,7 @@ class SourceKind(StrEnum):
     FILE = "file"
     REPOSITORY = "repository"
     MANUAL = "manual"
+    CONVERSATION = "conversation"
 
 
 class DocumentContentType(StrEnum):

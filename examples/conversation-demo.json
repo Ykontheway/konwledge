@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "conversation_id": "synthetic-demo-001",
+  "version": 1,
+  "created_at": "2026-11-11T10:00:00Z",
+  "messages": [
+    {
+      "id": "user-1",
+      "role": "user",
+      "content": "事实：合成用户偏好深色模式。\n问题：这个偏好会自动变成已批准知识吗？",
+      "timestamp": "2026-11-11T10:00:01Z",
+      "metadata": {
+        "synthetic": true,
+        "note": "仅用于演示，未经事实核验"
+      }
+    },
+    {
+      "id": "assistant-1",
+      "role": "assistant",
+      "content": "决策：合成项目默认使用 SQLite。",
+      "timestamp": "2026-11-11T10:00:02Z",
+      "metadata": {
+        "synthetic": true
+      }
+    },
+    {
+      "id": "system-1",
+      "role": "system",
+      "content": "事实：这条系统消息应被候选提取忽略。"
+    },
+    {
+      "id": "tool-1",
+      "role": "tool",
+      "content": "决策：这条工具消息也应被候选提取忽略。"
+    }
+  ],
+  "metadata": {
+    "synthetic": true,
+    "notice": "候选不会自动成为事实，必须经过人工审核"
+  }
+}

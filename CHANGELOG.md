@@ -4,7 +4,18 @@ All notable changes to Konwledge are documented in this file.
 
 The project is in alpha. Minor releases may refine public and lower-level APIs as capabilities are added; v0.1.0 does not provide a complete backward-compatibility guarantee.
 
-## Unreleased — U18
+## Unreleased — U18-U19
+
+### U19
+
+- 增加不可变对话 schema、10 MiB/UTF-8/重复 key 严格校验、版本历史与规范 JSON 导出；同一 ID/版本内容不可变，重复导入相同内容保持幂等。
+- 增加确定性候选提取：只识别 `user`/`assistant` 消息中的显式事实和决策标记；不读取 `system`/`tool`，不调用 LLM，也不自动认定候选真实。
+- 增加人工批准/拒绝终态审核与审计归属。批准在一个事务中物化可检索知识，拒绝不写知识；重导入保留决定，新版本不自动撤销旧版本已批准事实。
+- 增加 `knowledge conversation` 和顶层 `knowledge candidate` CLI，支持 stdin、latest 默认、状态/对话/版本过滤、稳定 JSON、规范导出和安全覆盖保护。
+- 扩展源码与安装后验收，覆盖待审核不可检索、批准可检索、拒绝缺席、重复审核审计、终态冲突和 HTTP 只读查询。U19 不增加运行时依赖，不修改 U18 API 协议，不改前端，也不发布或部署。
+- 冻结 snapshot V1 合同中的来源类型，继续保持 `url`、`file`、`repository`、`manual` 四项。批准后的对话仍是 `conversation` 来源；V1 导出遇到这类来源会明确失败，不会省略或改标。demo golden、JSON Schema 与前端生成类型均未重新生成。
+
+### U18
 
 - 增加可选 `[api]`（FastAPI/Uvicorn）本机只读上下文传输：健康检查、模型列表、原生 `ContextPacket` 与严格的 OpenAI chat completion 子集；不执行推理、不返回虚构 usage。
 - 增加 `knowledge serve`：仅 loopback，端口 `1..65535`，已有数据库与 SQLite `mode=rw`，密钥只取自 `KNOWLEDGE_API_KEY`（拒绝显式空白），禁用 access log，启动允许 additive schema/FTS 初始化，退出释放 engine。

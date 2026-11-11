@@ -7,6 +7,11 @@ from types import TracebackType
 from sqlalchemy.orm import Session
 
 from konwledge.storage.conflicts import ConflictRepository
+from konwledge.storage.conversations import (
+    ConversationCandidateRepository,
+    ConversationRepository,
+    ConversationReviewRepository,
+)
 from konwledge.storage.database import SessionFactory
 from konwledge.storage.evaluation import EvaluationSetRepository
 from konwledge.storage.repository import (
@@ -33,6 +38,9 @@ class UnitOfWork:
         self.revisions = RevisionRepository(self._session)
         self.citations = CitationRepository(self._session)
         self.conflicts = ConflictRepository(self._session)
+        self.conversations = ConversationRepository(self._session)
+        self.conversation_candidates = ConversationCandidateRepository(self._session)
+        self.conversation_reviews = ConversationReviewRepository(self._session)
         self.evaluation_sets = EvaluationSetRepository(self._session)
         return self
 

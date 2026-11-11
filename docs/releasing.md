@@ -4,7 +4,7 @@ This document is a maintainer checklist. It separates a release-ready source tre
 
 ## Current v0.1.0 state
 
-As of 2026-11-11, v0.1.0 is prepared as an alpha release candidate in source metadata. U17 does not merge `main`, create a pull request, tag a commit, create a GitHub Release, publish to PyPI, or deploy/verify a public site. Local artifacts produced during verification are not a published release.
+As of 2026-11-11, v0.1.0 is prepared as an alpha release candidate in source metadata. U18 and U19 remain Unreleased additions and do not change the version. This work does not merge `main`, create a pull request, tag a commit, create a GitHub Release, publish to PyPI, or deploy/verify a public site. Local artifacts produced during verification are not a published release.
 
 No installation instructions should claim that `konwledge==0.1.0` is available from PyPI until the package index confirms it.
 
@@ -219,3 +219,29 @@ uv run python scripts/verify_distribution.py --output-dir dist/u18-verification
 5. [API 文档](api.md) 明确 `serve` 的已有数据库要求、loopback/端口/环境密钥约束及启动 additive schema/FTS 可能写库，与 HTTP 请求只读区分；OpenAI 子集只返回 packet，无真实推理、usage、stream/tools/sampling/Responses/对话历史。
 
 测试不得调用外部 provider，不启动后台服务或部署；本地产物仍须单独取得发布授权，不能因为分发 smoke 成功而标记为已发布。
+
+
+## U19 集成检查补充（Unreleased，非发布）
+
+U19 保持 `0.1.0`，不增加运行时依赖，也不修改 U18 只读 HTTP schema。候选审核是本地显式操作，不是发布授权、身份认证或自动事实验证。
+
+建议在其他协作者完成安全测试后运行：
+
+```bash
+uv run pytest tests/test_conversation_cli.py tests/test_candidate_cli.py \
+  tests/test_conversation_safety.py
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src tests scripts
+uv run python scripts/verify_distribution.py --output-dir dist/u19-verification
+```
+
+发布评审还要确认以下事项：
+
+- core-only wheel/sdist 都能从仓库外完成对话 stdin 导入、默认 pending 列表、批准与拒绝、重复导入和审计查询；测试不读取源码 checkout。
+- 非法 JSON、重复 key、非 UTF-8、超过 10 MiB 和不合 schema 的输入在创建数据库或父目录前失败，诊断不回显原始私密正文。
+- 待审核与已拒绝候选不出现在 search/context；批准候选可检索。重复相同决定保留最初审核记录，反向终态操作退出 `2`。
+- `[api]` 隔离 smoke 先通过 CLI 准备批准/拒绝记录，再在只读 SQL 监听阶段验证 HTTP 只能检索批准内容，不产生写入。
+- `examples/conversation-demo.json` 是合成数据；原始聊天、conversation/candidate JSON、导出和数据库均按私密本地制品处理，不加入公开发布资产。
+
+U19 不要求新增 console entry point、依赖、API 路由、前端或部署。分发验证成功仍只说明本地产物可供评审，不表示 v0.1.0 已发布。

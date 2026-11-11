@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from konwledge.conflicts import ConflictService
 from konwledge.context import ContextPacket, ContextService
+from konwledge.conversations import ConversationService
 from konwledge.domain import (
     Document,
     KnowledgeUnit,
@@ -42,6 +43,7 @@ from konwledge.storage import SessionFactory, UnitOfWork
 
 __all__ = [
     "SUPPORTED_SUFFIXES",
+    "ConversationService",
     "DocumentSummary",
     "FileDiscovery",
     "ImportPathError",
@@ -193,6 +195,7 @@ class KnowledgeLibrary:
         self._lifecycle = LifecycleService(session_factory, id_factory=id_factory, clock=clock)
         self._freshness = FreshnessService(session_factory, id_factory=id_factory, clock=clock)
         self._conflicts = ConflictService(session_factory, id_factory=id_factory, clock=clock)
+        self._conversations = ConversationService(session_factory, clock=clock)
         self._retrieval = RetrievalService(
             session_factory, indexing_service=indexing_service, clock=clock
         )
@@ -216,6 +219,12 @@ class KnowledgeLibrary:
         """Deterministic conflict candidates, frozen evidence, and human review."""
 
         return self._conflicts
+
+    @property
+    def conversations(self) -> ConversationService:
+        """Immutable conversation import, candidate queue, and terminal review."""
+
+        return self._conversations
 
     @property
     def evaluation(self) -> EvaluationService:

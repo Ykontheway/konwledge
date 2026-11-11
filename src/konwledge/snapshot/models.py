@@ -17,8 +17,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from konwledge.domain import DocumentContentType, KnowledgeUnitStatus, SourceKind
+from konwledge.domain import DocumentContentType, KnowledgeUnitStatus
 from konwledge.lifecycle import UnitChangeKind
+from konwledge.snapshot.v1_contract import SourceKind
 
 SCHEMA_VERSION = 1
 SCHEMA_ID = "https://github.com/Ykontheway/konwledge/blob/main/demo/snapshot.schema.json"

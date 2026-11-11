@@ -1,6 +1,22 @@
 """Domain models for versioned knowledge."""
 
 from konwledge.domain.conflicts import Conflict, ConflictEvidence, ConflictStatus
+from konwledge.domain.conversations import (
+    CONVERSATION_SCHEMA_VERSION,
+    CandidateKind,
+    CandidateStatus,
+    Conversation,
+    ConversationCandidate,
+    ConversationImportResult,
+    ConversationMessage,
+    ConversationReview,
+    ConversationRole,
+    ReviewDecision,
+    StoredConversation,
+    canonical_conversation_json,
+    dump_conversation_json,
+    load_conversation_json,
+)
 from konwledge.domain.evaluation import EvaluationItem, EvaluationSet, dump_evaluation_set
 from konwledge.domain.freshness import FreshnessPolicy
 from konwledge.domain.models import (
@@ -17,10 +33,19 @@ from konwledge.domain.models import (
 )
 
 __all__ = [
+    "CONVERSATION_SCHEMA_VERSION",
+    "CandidateKind",
+    "CandidateStatus",
     "Citation",
     "Conflict",
     "ConflictEvidence",
     "ConflictStatus",
+    "Conversation",
+    "ConversationCandidate",
+    "ConversationImportResult",
+    "ConversationMessage",
+    "ConversationReview",
+    "ConversationRole",
     "Document",
     "DocumentContentType",
     "EvaluationItem",
@@ -28,10 +53,15 @@ __all__ = [
     "FreshnessPolicy",
     "KnowledgeUnit",
     "KnowledgeUnitStatus",
+    "ReviewDecision",
     "Revision",
     "RevisionChangeType",
     "RevisionEntityType",
     "Source",
     "SourceKind",
+    "StoredConversation",
+    "canonical_conversation_json",
+    "dump_conversation_json",
     "dump_evaluation_set",
+    "load_conversation_json",
 ]

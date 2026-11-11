@@ -11,6 +11,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
@@ -194,3 +195,103 @@ class EvaluationSetRow(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
+class ConversationRow(Base):
+    """One immutable imported conversation version."""
+
+    __tablename__ = "conversations"
+    __table_args__ = (
+        CheckConstraint("version >= 1"),
+        CheckConstraint("length(content_hash) = 64"),
+    )
+
+    conversation_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    imported_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
+class ConversationCandidateRow(Base):
+    """Extracted review item; no knowledge graph references exist before approval."""
+
+    __tablename__ = "conversation_candidates"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["conversation_id", "conversation_version"],
+            ["conversations.conversation_id", "conversations.version"],
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("conversation_version >= 1"),
+        CheckConstraint("message_ordinal >= 0"),
+        CheckConstraint("start_char >= 0"),
+        CheckConstraint("end_char > start_char"),
+        CheckConstraint(
+            "(status = 'approved' AND source_id IS NOT NULL "
+            "AND document_id IS NOT NULL AND knowledge_unit_id IS NOT NULL) OR "
+            "(status != 'approved' AND source_id IS NULL "
+            "AND document_id IS NULL AND knowledge_unit_id IS NULL)"
+        ),
+        Index("ix_conversation_candidates_queue", "status", "created_at", "id"),
+        Index(
+            "ix_conversation_candidates_conversation",
+            "conversation_id",
+            "conversation_version",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    conversation_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    conversation_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    message_id: Mapped[str] = mapped_column(Text, nullable=False)
+    message_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    start_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_id: Mapped[UUID | None] = mapped_column(ForeignKey("sources.id", ondelete="RESTRICT"))
+    document_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="RESTRICT")
+    )
+    knowledge_unit_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("knowledge_units.id", ondelete="RESTRICT")
+    )
+
+
+class ConversationReviewRow(Base):
+    """Append-only terminal review audit record (one per candidate)."""
+
+    __tablename__ = "conversation_reviews"
+    __table_args__ = (
+        CheckConstraint(
+            "(decision = 'approved' AND source_id IS NOT NULL "
+            "AND document_id IS NOT NULL AND knowledge_unit_id IS NOT NULL) OR "
+            "(decision = 'rejected' AND source_id IS NULL "
+            "AND document_id IS NULL AND knowledge_unit_id IS NULL)"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    candidate_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversation_candidates.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    reviewer: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_id: Mapped[UUID | None] = mapped_column(ForeignKey("sources.id", ondelete="RESTRICT"))
+    document_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="RESTRICT")
+    )
+    knowledge_unit_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("knowledge_units.id", ondelete="RESTRICT")
+    )

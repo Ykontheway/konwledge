@@ -6,9 +6,11 @@ import contextlib
 import errno
 import json
 import os
+import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, NoReturn
 from uuid import UUID
@@ -19,8 +21,20 @@ from pydantic import ValidationError
 from konwledge import __version__
 from konwledge.application import ImportPathError, KnowledgeLibrary, KnowledgeUnitNotFoundError
 from konwledge.context import assemble_context, validate_budget
+from konwledge.conversations import (
+    CandidateNotFoundError,
+    CandidateStateError,
+    CandidateStatus,
+    Conversation,
+    ConversationNotFoundError,
+    ConversationService,
+    ConversationVersionConflictError,
+    StoredConversation,
+    load_conversation_json,
+)
 from konwledge.demo import DemoWorkspaceError, build_demo, export_demo
 from konwledge.domain import ConflictStatus, FreshnessPolicy, KnowledgeUnit
+from konwledge.domain.conversations import MAX_CONVERSATION_BYTES
 from konwledge.embedding import EmbeddingService, HashEmbeddingProvider
 from konwledge.evaluation import (
     EvaluationBaseline,
@@ -115,6 +129,20 @@ def _open_library(database: Path) -> KnowledgeLibrary:
     engine = create_sqlite_engine(f"sqlite+pysqlite:///{database_path.as_posix()}")
     create_schema(engine)
     return KnowledgeLibrary(create_session_factory(engine))
+
+
+@contextlib.contextmanager
+def _open_scoped_library(database: Path) -> Iterator[KnowledgeLibrary]:
+    """Open one CLI-owned library and always release its SQLAlchemy engine."""
+
+    database_path = database.expanduser().resolve()
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    engine = create_sqlite_engine(f"sqlite+pysqlite:///{database_path.as_posix()}")
+    try:
+        create_schema(engine)
+        yield KnowledgeLibrary(create_session_factory(engine))
+    finally:
+        engine.dispose()
 
 
 def _fail(message: str, *, code: int = 1) -> NoReturn:
@@ -312,6 +340,493 @@ def import_command(
     )
     for skipped in report.skipped:
         typer.echo(f"skipped: {skipped}")
+
+
+class CandidateListStatus(StrEnum):
+    """CLI filter including the explicit unfiltered value."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ALL = "all"
+
+
+def _require_nonblank(value: str, name: str) -> str:
+    if not value.strip():
+        _fail(f"{name} must contain non-whitespace content", code=2)
+    return value
+
+
+def _read_conversation_input(source: str) -> Conversation:
+    """Read at most the domain byte limit and validate before storage is opened."""
+
+    try:
+        if source == "-":
+            raw = sys.stdin.buffer.read(MAX_CONVERSATION_BYTES + 1)
+        else:
+            path = Path(source).expanduser()
+            if path.stat().st_size > MAX_CONVERSATION_BYTES:
+                _fail(
+                    f"conversation JSON exceeds {MAX_CONVERSATION_BYTES} bytes",
+                    code=2,
+                )
+            with path.open("rb") as stream:
+                raw = stream.read(MAX_CONVERSATION_BYTES + 1)
+    except (OSError, UnicodeError):
+        _fail("could not read conversation input")
+
+    if len(raw) > MAX_CONVERSATION_BYTES:
+        _fail(f"conversation JSON exceeds {MAX_CONVERSATION_BYTES} bytes", code=2)
+    try:
+        return load_conversation_json(raw)
+    except UnicodeError:
+        _fail("conversation input must be valid UTF-8", code=2)
+    except ValidationError:
+        _fail("conversation JSON does not match schema version 1", code=2)
+    except json.JSONDecodeError:
+        _fail("conversation input is not valid JSON", code=2)
+    except ValueError as error:
+        message = str(error)
+        if message.startswith("duplicate JSON object key"):
+            _fail("conversation JSON contains a duplicate object key", code=2)
+        if message.startswith("non-finite JSON number"):
+            _fail("conversation JSON contains a non-finite number", code=2)
+        if message.startswith("conversation JSON root") or message.startswith(
+            "conversation JSON exceeds"
+        ):
+            _fail(message, code=2)
+        _fail("conversation JSON does not match schema version 1", code=2)
+
+
+def _conversation_error(error: Exception) -> NoReturn:
+    if isinstance(error, ValidationError):
+        _fail("conversation storage operation failed")
+    if isinstance(
+        error,
+        (
+            CandidateNotFoundError,
+            CandidateStateError,
+            ConversationNotFoundError,
+            ConversationVersionConflictError,
+            ValueError,
+        ),
+    ):
+        _fail(str(error), code=2)
+    _fail("conversation storage operation failed")
+
+
+def _latest_conversation(service: ConversationService, conversation_id: str) -> StoredConversation:
+    # Kept narrow and local so conversation commands use only the existing service API.
+    conversations = service.conversation_history(conversation_id)
+    if not conversations:
+        raise ConversationNotFoundError(f"conversation {conversation_id!r} was not found")
+    return conversations[-1]
+
+
+conversation_app = typer.Typer(
+    name="conversation",
+    help="Import and inspect immutable conversation versions.",
+    no_args_is_help=True,
+)
+app.add_typer(conversation_app, name="conversation")
+
+
+@conversation_app.command("import")
+def conversation_import_command(
+    source: Annotated[str, typer.Argument(help="UTF-8 JSON file, or '-' for standard input.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the complete import result as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Validate and import one immutable conversation version."""
+
+    conversation = _read_conversation_input(source)
+    try:
+        with _open_scoped_library(database) as library:
+            result = library.conversations.import_conversation(conversation)
+    except Exception as error:
+        _conversation_error(error)
+
+    if json_output:
+        typer.echo(result.model_dump_json(indent=2))
+        return
+    action = "imported" if result.created else "existing"
+    typer.echo(
+        f"{action}: conversation={result.stored.conversation.conversation_id} "
+        f"version={result.stored.conversation.version} "
+        f"candidates={len(result.candidates)} hash={result.stored.content_hash}"
+    )
+
+
+@conversation_app.command("list")
+def conversation_list_command(
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output all versions as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """List all stored conversation versions."""
+
+    try:
+        with _open_scoped_library(database) as library:
+            conversations = library.conversations.list_conversations()
+    except Exception as error:
+        _conversation_error(error)
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                [item.model_dump(mode="json") for item in conversations],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    if not conversations:
+        typer.echo("No conversations found.")
+        return
+    for stored in conversations:
+        conversation = stored.conversation
+        typer.echo(
+            f"{conversation.conversation_id} | version={conversation.version} "
+            f"messages={len(conversation.messages)} hash={stored.content_hash} "
+            f"imported_at={stored.imported_at.isoformat()}"
+        )
+
+
+@conversation_app.command("show")
+def conversation_show_command(
+    conversation_id: Annotated[str, typer.Argument(help="Conversation identifier.")],
+    version: Annotated[
+        int | None,
+        typer.Option("--version", min=1, help="Version to show (default: latest)."),
+    ] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the stored conversation as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show one stored conversation version; the default is the latest version."""
+
+    _require_nonblank(conversation_id, "conversation_id")
+    try:
+        with _open_scoped_library(database) as library:
+            stored = (
+                _latest_conversation(library.conversations, conversation_id)
+                if version is None
+                else library.conversations.get_conversation(conversation_id, version)
+            )
+    except Exception as error:
+        _conversation_error(error)
+
+    if json_output:
+        typer.echo(stored.model_dump_json(indent=2))
+        return
+    conversation = stored.conversation
+    typer.echo(f"conversation: {conversation.conversation_id}")
+    typer.echo(f"version: {conversation.version}")
+    typer.echo(f"schema_version: {conversation.schema_version}")
+    typer.echo(f"hash: {stored.content_hash}")
+    typer.echo(f"imported_at: {stored.imported_at.isoformat()}")
+    typer.echo(f"messages: {len(conversation.messages)}")
+    for message in conversation.messages:
+        typer.echo(f"  {message.id} | role={message.role.value}")
+        typer.echo(message.content, nl=not message.content.endswith("\n"))
+
+
+@conversation_app.command("history")
+def conversation_history_command(
+    conversation_id: Annotated[str, typer.Argument(help="Conversation identifier.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output every stored version as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show the immutable version history of one conversation."""
+
+    _require_nonblank(conversation_id, "conversation_id")
+    try:
+        with _open_scoped_library(database) as library:
+            history = library.conversations.conversation_history(conversation_id)
+            if not history:
+                raise ConversationNotFoundError(f"conversation {conversation_id!r} was not found")
+    except Exception as error:
+        _conversation_error(error)
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                [item.model_dump(mode="json") for item in history],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    typer.echo(f"conversation: {conversation_id}")
+    typer.echo(f"versions: {len(history)}")
+    for stored in history:
+        typer.echo(
+            f"  version={stored.conversation.version} messages={len(stored.conversation.messages)} "
+            f"hash={stored.content_hash} imported_at={stored.imported_at.isoformat()}"
+        )
+
+
+@conversation_app.command("export")
+def conversation_export_command(
+    conversation_id: Annotated[str, typer.Argument(help="Conversation identifier.")],
+    version: Annotated[
+        int | None,
+        typer.Option("--version", min=1, help="Version to export (default: latest)."),
+    ] = None,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write to a new file instead of stdout.")
+    ] = None,
+    overwrite: Annotated[
+        bool, typer.Option("--overwrite", help="Explicitly replace an existing output file.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Export one version as round-trippable canonical conversation JSON."""
+
+    _require_nonblank(conversation_id, "conversation_id")
+    if output is not None and output.exists() and not overwrite:
+        _fail("output already exists; pass --overwrite to replace it", code=2)
+    try:
+        with _open_scoped_library(database) as library:
+            if version is None:
+                stored = _latest_conversation(library.conversations, conversation_id)
+                content = library.conversations.export_conversation(
+                    conversation_id, stored.conversation.version
+                )
+            else:
+                content = library.conversations.export_conversation(conversation_id, version)
+    except Exception as error:
+        _conversation_error(error)
+
+    content += "\n"
+    if output is None:
+        typer.echo(content, nl=False)
+        return
+    try:
+        _atomic_write(output, content, overwrite=overwrite)
+    except FileExistsError:
+        _fail("output already exists; pass --overwrite to replace it", code=2)
+    except (OSError, UnicodeError):
+        _fail("could not write conversation output")
+    typer.echo(f"exported: {output}")
+
+
+candidate_app = typer.Typer(
+    name="candidate",
+    help="Inspect and review deterministic conversation candidates.",
+    no_args_is_help=True,
+)
+app.add_typer(candidate_app, name="candidate")
+
+
+@candidate_app.command("list")
+def candidate_list_command(
+    status: Annotated[
+        CandidateListStatus,
+        typer.Option("--status", help="Status filter; use 'all' to disable it."),
+    ] = CandidateListStatus.PENDING,
+    conversation_id: Annotated[
+        str | None, typer.Option("--conversation-id", help="Restrict to one conversation.")
+    ] = None,
+    version: Annotated[
+        int | None, typer.Option("--version", min=1, help="Restrict to one positive version.")
+    ] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the candidate list as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """List pending candidates by default, or an explicit status/all selection."""
+
+    if conversation_id is not None:
+        _require_nonblank(conversation_id, "conversation_id")
+    selected = None if status is CandidateListStatus.ALL else CandidateStatus(status.value)
+    try:
+        with _open_scoped_library(database) as library:
+            candidates = library.conversations.list_candidates(
+                status=selected,
+                conversation_id=conversation_id,
+                version=version,
+            )
+    except Exception as error:
+        _conversation_error(error)
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                [candidate.model_dump(mode="json") for candidate in candidates],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    if not candidates:
+        typer.echo("No conversation candidates found.")
+        return
+    for candidate in candidates:
+        typer.echo(
+            f"{candidate.id} | {candidate.status.value:<8} | {candidate.kind.value} | "
+            f"conversation={candidate.conversation_id} version={candidate.conversation_version} "
+            f"message={candidate.message_id} range=[{candidate.start_char}, {candidate.end_char})"
+        )
+        typer.echo(f"  {candidate.text}")
+
+
+@candidate_app.command("show")
+def candidate_show_command(
+    candidate_id: Annotated[UUID, typer.Argument(help="Candidate UUID.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the complete candidate as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show one candidate and its exact source-message span."""
+
+    try:
+        with _open_scoped_library(database) as library:
+            candidate = library.conversations.get_candidate(candidate_id)
+    except Exception as error:
+        _conversation_error(error)
+
+    if json_output:
+        typer.echo(candidate.model_dump_json(indent=2))
+        return
+    typer.echo(f"candidate: {candidate.id}")
+    typer.echo(f"status: {candidate.status.value}")
+    typer.echo(f"kind: {candidate.kind.value}")
+    typer.echo(
+        f"conversation: {candidate.conversation_id} version={candidate.conversation_version} "
+        f"hash={candidate.conversation_hash}"
+    )
+    typer.echo(
+        f"message: {candidate.message_id} ordinal={candidate.message_ordinal} "
+        f"role={candidate.role.value} range=[{candidate.start_char}, {candidate.end_char})"
+    )
+    typer.echo("text:")
+    typer.echo(candidate.text, nl=not candidate.text.endswith("\n"))
+
+
+@candidate_app.command("history")
+def candidate_history_command(
+    candidate_id: Annotated[UUID, typer.Argument(help="Candidate UUID.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the review audit as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Show the terminal review audit for one candidate."""
+
+    try:
+        with _open_scoped_library(database) as library:
+            reviews = library.conversations.review_history(candidate_id)
+    except Exception as error:
+        _conversation_error(error)
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                [review.model_dump(mode="json") for review in reviews],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    typer.echo(f"candidate: {candidate_id}")
+    typer.echo(f"reviews: {len(reviews)}")
+    for review in reviews:
+        typer.echo(
+            f"  {review.id} | {review.decision.value} | reviewer={review.reviewer} "
+            f"reason={review.reason or '<none>'} at={review.reviewed_at.isoformat()}"
+        )
+
+
+def _review_candidate(
+    candidate_id: UUID,
+    *,
+    reviewer: str,
+    reason: str | None,
+    approve: bool,
+    json_output: bool,
+    database: Path,
+) -> None:
+    _require_nonblank(reviewer, "reviewer")
+    if reason is not None:
+        _require_nonblank(reason, "reason")
+    if not approve and reason is None:
+        _fail("rejection requires a non-empty reason", code=2)
+    try:
+        with _open_scoped_library(database) as library:
+            review = (
+                library.conversations.approve(candidate_id, reviewer, reason=reason)
+                if approve
+                else library.conversations.reject(candidate_id, reviewer, reason=reason or "")
+            )
+    except Exception as error:
+        _conversation_error(error)
+
+    if json_output:
+        typer.echo(review.model_dump_json(indent=2))
+        return
+    typer.echo(
+        f"reviewed: candidate={review.candidate_id} decision={review.decision.value} "
+        f"review={review.id} reviewer={review.reviewer}"
+    )
+
+
+@candidate_app.command("approve")
+def candidate_approve_command(
+    candidate_id: Annotated[UUID, typer.Argument(help="Candidate UUID.")],
+    reviewer: Annotated[
+        str, typer.Option("--reviewer", help="Audit attribution supplied by the caller.")
+    ],
+    reason: Annotated[
+        str | None, typer.Option("--reason", help="Optional non-blank review reason.")
+    ] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the review record as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Approve a pending candidate and materialize its exact text as knowledge."""
+
+    _review_candidate(
+        candidate_id,
+        reviewer=reviewer,
+        reason=reason,
+        approve=True,
+        json_output=json_output,
+        database=database,
+    )
+
+
+@candidate_app.command("reject")
+def candidate_reject_command(
+    candidate_id: Annotated[UUID, typer.Argument(help="Candidate UUID.")],
+    reviewer: Annotated[
+        str, typer.Option("--reviewer", help="Audit attribution supplied by the caller.")
+    ],
+    reason: Annotated[str, typer.Option("--reason", help="Required non-blank rejection reason.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output the review record as JSON.")
+    ] = False,
+    database: DatabaseOption = DEFAULT_DATABASE,
+) -> None:
+    """Reject a pending candidate without creating searchable knowledge."""
+
+    _review_candidate(
+        candidate_id,
+        reviewer=reviewer,
+        reason=reason,
+        approve=False,
+        json_output=json_output,
+        database=database,
+    )
 
 
 @app.command("search")

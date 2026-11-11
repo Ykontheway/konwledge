@@ -10,8 +10,9 @@ It is not a hosted knowledge service, distributed vector database, automatic ans
 
 | Layer | Primary paths | Responsibility |
 | --- | --- | --- |
-| Public facade | `src/konwledge/__init__.py`, `application.py` | Lazily export `KnowledgeLibrary`; coordinate import, lifecycle, freshness, conflicts, retrieval, context, and evaluation |
-| Domain | `src/konwledge/domain/` | Immutable validated models for sources, documents, units, revisions, citations, conflicts, freshness, and evaluation sets |
+| Public facade | `src/konwledge/__init__.py`, `application.py` | Lazily export `KnowledgeLibrary`; coordinate import, lifecycle, freshness, conflicts, conversations, retrieval, context, and evaluation |
+| Domain | `src/konwledge/domain/` | Immutable validated models for sources, documents, units, revisions, citations, conflicts, conversations, freshness, and evaluation sets |
+| Conversation review | `src/konwledge/conversations/` | Validate immutable versions, extract explicit candidates, and atomically materialize only approved spans |
 | Ingestion | `src/konwledge/ingestion/` | Load UTF-8 text, normalize it, split traceable units, and persist idempotent document versions |
 | Lifecycle | `src/konwledge/lifecycle/` | Diff versions, maintain lineage and publication history, resolve as-of status, and apply stale/refresh transitions |
 | Conflict analysis | `src/konwledge/conflicts/` | Produce conservative candidates with frozen evidence and append human review history |
@@ -29,7 +30,7 @@ It is not a hosted knowledge service, distributed vector database, automatic ans
 
 SQLite stores metadata and audit history. SQLAlchemy repositories keep persistence mapping separate from Pydantic domain models. `UnitOfWork` gives service operations explicit commit and rollback boundaries; exiting an uncommitted unit of work rolls back.
 
-The revision and publication log is authoritative for historical state. A unit's persisted current `status` is a query/index cache, updated in the same transaction as lifecycle writes, but as-of views are reconstructed from history. Evaluation-set versions and conflict evidence are immutable; status reviews and lifecycle transitions append records rather than rewriting the audit chain.
+The revision and publication log is authoritative for historical state. A unit's persisted current `status` is a query/index cache, updated in the same transaction as lifecycle writes, but as-of views are reconstructed from history. Evaluation-set and conversation versions are immutable. Conflict reviews and lifecycle transitions append records rather than rewriting the audit chain; conversation candidates allow one terminal review whose audit record is append-only.
 
 `create_schema()` creates missing tables, enables foreign keys and FTS helpers, and applies narrowly defined additive upgrades to older local databases. This is not a general destructive migration framework. New migrations must preserve existing data, audit history, and snapshot contracts.
 
@@ -43,7 +44,7 @@ Ingestion normalizes supported Markdown and text files, fingerprints normalized 
 
 Each unit version has a unique ID and a lineage ID that follows the logical unit across document versions. Diffs classify units as added, modified, moved, unchanged, or removed. Revision records and publication events make reverts and historical reads explicit rather than silently replacing old content.
 
-Source paths are local runtime metadata. Ordinary libraries may therefore contain absolute file URIs. The demo snapshot relativizes paths before committing them, but raw databases and evaluation reports should be treated as potentially sensitive local artifacts.
+Source paths are local runtime metadata. Ordinary libraries may therefore contain absolute file URIs. The demo snapshot relativizes paths before committing them, but raw databases, conversations and evaluation reports should be treated as potentially sensitive local artifacts.
 
 ## Eligibility-first retrieval
 
@@ -82,6 +83,16 @@ The gate is fail closed. It blocks degraded candidates, configured regressions, 
 
 Lineage retrieval metrics answer whether expected knowledge was retrieved. They do not prove source correctness, fact quality, generated-answer faithfulness, or production embedding quality.
 
+## U19 对话审核边界（Unreleased）
+
+对话以 `(conversation_id, version)` 保存为不可变记录。导入端在打开存储前完成 10 MiB 上限、UTF-8、重复 JSON key 和严格 Pydantic schema 校验。规范 JSON hash 不受输入排版影响，同一 ID/版本只能重复导入相同内容。
+
+提取器是确定性规则，不是语义模型。它只从 `user` 与 `assistant` 消息的显式事实/决策单行创建精确半开字符区间；`system`、`tool`、空标记和问句跳过。候选保持 `pending` 时不会进入来源、文档、knowledge unit、FTS 或发布历史。
+
+批准操作在一个 `UnitOfWork` 中写入确定性来源、文档、精确候选文本、生命周期发布、候选终态和审核记录。拒绝只写候选终态与审核记录。两个决定都不可逆；重复相同决定返回最初的审计记录，反向决定失败。审核人是调用者提供的归属字段，不是认证结果。导入后续对话版本不会撤销旧版本已批准知识。
+
+CLI 的 conversation/candidate JSON 输出保留原始正文和审核字段，可能包含私密聊天。它不经过 U16 compact baseline 脱敏边界。U19 不新增 HTTP 路由；U18 `/v1/context` 与 chat completion 子集继续只读，只能检索已经批准并发布的候选。
+
 ## Error contracts
 
 SDK validation errors are explicit Pydantic or `ValueError` failures. Missing entities use lookup-oriented errors; invalid lifecycle transitions and missing vector configuration have specific exceptions. Storage corruption and unavailable FTS5 surface as runtime failures. Provider/index exceptions are not converted into successful empty searches.
@@ -105,7 +116,7 @@ The in-memory vector route is an exact linear scan. LanceDB is optional and call
 
 ## Static demo boundary
 
-The V1 snapshot is a deterministic, versioned read model. The V2 site renders that committed data and does not reimplement lifecycle rules. Golden tests detect drift between models, JSON Schema, snapshot output, and generated frontend types.
+The V1 snapshot is a deterministic, versioned read model. The V2 site renders that committed data and does not reimplement lifecycle rules. Golden tests detect drift between models, JSON Schema, snapshot output, and generated frontend types. Its source-kind enum is deliberately frozen at `url`, `file`, `repository`, and `manual`, independently of the evolving domain enum. An approved conversation remains a `conversation` source with full provenance, so V1 export fails closed instead of omitting or reclassifying it. Pending and rejected candidates create no source and leave existing demo exports unchanged. U19 does not regenerate the snapshot/schema goldens or frontend types.
 
 Frontend development is paused at V2. V3/V4 views, live-page publication, and further deployment are deferred. A deployment workflow in the repository is configuration, not evidence that a public site is live.
 

@@ -48,6 +48,7 @@ def run(
     cwd: Path,
     expected: int = 0,
     timeout: int = 120,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         list(command),
@@ -56,6 +57,7 @@ def run(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        input=input_text,
         timeout=timeout,
         check=False,
     )
@@ -80,8 +82,14 @@ def cli(
     cwd: Path,
     *arguments: str,
     expected: int = 0,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return run([str(executable), *arguments], cwd=cwd, expected=expected)
+    return run(
+        [str(executable), *arguments],
+        cwd=cwd,
+        expected=expected,
+        input_text=input_text,
+    )
 
 
 def open_library(database: Path, *, at: datetime | None = None) -> tuple[Engine, KnowledgeLibrary]:
@@ -270,6 +278,174 @@ def verify_plaintext_context(knowledge: Path, root: Path) -> None:
         len(ContextPacket.model_validate_json(included.stdout).blocks) == 1,
         "stale evidence opt-in failed",
     )
+
+
+def verify_conversations(knowledge: Path, root: Path) -> None:
+    """Exercise U19 only through the installed CLI, then audit through the SDK."""
+
+    from konwledge.context import ContextPacket
+    from konwledge.conversations import ConversationCandidate, ConversationImportResult
+    from konwledge.retrieval import RetrievalResult
+
+    database = root / "conversation.db"
+    payload = json.dumps(
+        {
+            "schema_version": 1,
+            "conversation_id": "installed-u19",
+            "version": 1,
+            "messages": [
+                {
+                    "id": "fact",
+                    "role": "user",
+                    "content": "事实：installed-approved-token 使用本地审核。",
+                },
+                {
+                    "id": "decision",
+                    "role": "assistant",
+                    "content": "决策：installed-rejected-token 不采用。",
+                },
+                {"id": "system", "role": "system", "content": "事实：忽略系统消息。"},
+                {"id": "tool", "role": "tool", "content": "决策：忽略工具消息。"},
+            ],
+            "metadata": {"synthetic": True},
+        },
+        ensure_ascii=False,
+    )
+    imported_process = cli(
+        knowledge,
+        root,
+        "conversation",
+        "import",
+        "-",
+        "--json",
+        "-d",
+        str(database),
+        input_text=payload,
+    )
+    imported = ConversationImportResult.model_validate_json(imported_process.stdout)
+    require(imported.created and len(imported.candidates) == 2, "conversation import failed")
+    fact, decision = imported.candidates
+
+    pending = cli(knowledge, root, "candidate", "list", "--json", "-d", str(database))
+    pending_values = [
+        ConversationCandidate.model_validate(item) for item in json.loads(pending.stdout)
+    ]
+    require(
+        [item.id for item in pending_values] == [fact.id, decision.id], "pending queue mismatch"
+    )
+    empty_search = cli(
+        knowledge, root, "search", "installed-approved-token", "--json", "-d", str(database)
+    )
+    require(
+        not RetrievalResult.model_validate_json(empty_search.stdout).hits,
+        "pending candidate became searchable",
+    )
+    empty_context = cli(
+        knowledge, root, "context", "installed-approved-token", "--json", "-d", str(database)
+    )
+    require(
+        not ContextPacket.model_validate_json(empty_context.stdout).blocks,
+        "pending candidate entered context",
+    )
+
+    cli(
+        knowledge,
+        root,
+        "candidate",
+        "approve",
+        str(fact.id),
+        "--reviewer",
+        "installed-reviewer",
+        "--reason",
+        "verified",
+        "-d",
+        str(database),
+    )
+    cli(
+        knowledge,
+        root,
+        "candidate",
+        "reject",
+        str(decision.id),
+        "--reviewer",
+        "installed-reviewer",
+        "--reason",
+        "not durable",
+        "-d",
+        str(database),
+    )
+    repeated = cli(
+        knowledge,
+        root,
+        "conversation",
+        "import",
+        "-",
+        "--json",
+        "-d",
+        str(database),
+        input_text=payload,
+    )
+    require(
+        not ConversationImportResult.model_validate_json(repeated.stdout).created,
+        "repeat import was not idempotent",
+    )
+    repeated_approval = cli(
+        knowledge,
+        root,
+        "candidate",
+        "approve",
+        str(fact.id),
+        "--reviewer",
+        "second-reviewer",
+        "--json",
+        "-d",
+        str(database),
+    )
+    require(
+        json.loads(repeated_approval.stdout)["reviewer"] == "installed-reviewer",
+        "repeat approval replaced audit attribution",
+    )
+    inverse = cli(
+        knowledge,
+        root,
+        "candidate",
+        "approve",
+        str(decision.id),
+        "--reviewer",
+        "installed-reviewer",
+        "-d",
+        str(database),
+        expected=2,
+    )
+    require("decisions are terminal" in inverse.stderr, "inverse terminal review was accepted")
+
+    approved = cli(
+        knowledge, root, "search", "installed-approved-token", "--json", "-d", str(database)
+    )
+    rejected = cli(
+        knowledge, root, "search", "installed-rejected-token", "--json", "-d", str(database)
+    )
+    require(len(RetrievalResult.model_validate_json(approved.stdout).hits) == 1, "approval absent")
+    require(not RetrievalResult.model_validate_json(rejected.stdout).hits, "rejection was indexed")
+
+    engine, library = open_library(database)
+    try:
+        require(
+            len(library.conversations.review_history(fact.id)) == 1,
+            "approval audit history mismatch",
+        )
+        require(
+            len(library.conversations.review_history(decision.id)) == 1,
+            "rejection audit history mismatch",
+        )
+        require(
+            len(library.build_context("installed-approved-token").blocks) == 1, "SDK read failed"
+        )
+        require(
+            not library.build_context("installed-rejected-token").blocks, "SDK rejection leaked"
+        )
+    finally:
+        engine.dispose()
 
 
 def verify_demo_retrieval(database: Path) -> None:
@@ -492,6 +668,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             checks.extend(("packaged_resources", "demo_timeline"))
             verify_plaintext_context(knowledge, root)
             checks.append("context_and_stale_filtering")
+            verify_conversations(knowledge, root)
+            checks.append("conversation_review_audit")
             verify_demo_retrieval(database)
             checks.append("historical_demo_retrieval")
             cases, gate_checks = verify_evaluation(

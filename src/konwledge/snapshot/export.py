@@ -60,6 +60,7 @@ from konwledge.snapshot.models import (
     UnitView,
     snapshot_json_schema,
 )
+from konwledge.snapshot.v1_contract import SourceKind as SnapshotSourceKind
 from konwledge.storage import SessionFactory, UnitOfWork
 
 
@@ -82,6 +83,7 @@ def export_snapshot(
 
     with UnitOfWork(session_factory) as uow:
         sources = sorted(uow.sources.list(), key=lambda source: (source.uri, str(source.id)))
+        _require_snapshot_v1_source_kinds(sources)
         base = root if root is not None else _common_root(sources)
         source_views: list[SourceView] = []
         lineage_views: list[LineageView] = []
@@ -129,6 +131,23 @@ def _dump(value: Any) -> str:
 # ---------------------------------------------------------------------------
 # Sources, documents, and diffs
 # ---------------------------------------------------------------------------
+
+
+_SNAPSHOT_V1_SOURCE_KINDS = frozenset(kind.value for kind in SnapshotSourceKind)
+
+
+def _require_snapshot_v1_source_kinds(sources: Sequence[Source]) -> None:
+    unsupported = [
+        source.kind for source in sources if source.kind.value not in _SNAPSHOT_V1_SOURCE_KINDS
+    ]
+    if SourceKind.CONVERSATION in unsupported:
+        raise ValueError(
+            "snapshot schema version 1 does not support conversation sources; "
+            "use context API or await versioned snapshot extension"
+        )
+    if unsupported:
+        kinds = ", ".join(sorted({kind.value for kind in unsupported}))
+        raise ValueError(f"snapshot schema version 1 does not support source kinds: {kinds}")
 
 
 def _export_source(
@@ -203,7 +222,7 @@ def _export_source(
                 )
     view = SourceView(
         id=source.id,
-        kind=source.kind,
+        kind=SnapshotSourceKind(source.kind.value),
         uri=_relative_uri(source, base),
         title=source.title,
         head_document_id=head_id,
