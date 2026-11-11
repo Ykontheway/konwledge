@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from scripts.installed_smoke import is_installed_location
 from scripts.verify_distribution import (
+    API_MODULES,
     Inspection,
     inspect_sdist,
     inspect_wheel,
@@ -17,8 +18,13 @@ from scripts.verify_distribution import (
 NAME = "konwledge"
 VERSION = "0.1.0"
 RESOURCE = "konwledge/demo/corpus/demo.md"
-WHEEL_METADATA = "Metadata-Version: 2.4\nName: konwledge\nVersion: 0.1.0\n"
-SDIST_METADATA = "Metadata-Version: 2.4\nName: konwledge\nVersion: 0.1.0\n"
+WHEEL_METADATA = (
+    "Metadata-Version: 2.4\nName: konwledge\nVersion: 0.1.0\n"
+    "Provides-Extra: api\n"
+    'Requires-Dist: fastapi<1,>=0.115; extra == "api"\n'
+    'Requires-Dist: uvicorn<1,>=0.30; extra == "api"\n'
+)
+SDIST_METADATA = WHEEL_METADATA
 ENTRY_POINTS = "[console_scripts]\nknowledge = konwledge.cli:main\nkonwledge = konwledge.cli:main\n"
 
 
@@ -29,6 +35,7 @@ def write_wheel(
         "konwledge/__init__.py": "",
         "konwledge/__main__.py": "",
         "konwledge/py.typed": "",
+        **dict.fromkeys(API_MODULES, ""),
         RESOURCE: "demo",
         "konwledge-0.1.0.dist-info/METADATA": WHEEL_METADATA,
         "konwledge-0.1.0.dist-info/entry_points.txt": ENTRY_POINTS,
@@ -52,6 +59,7 @@ def write_sdist(
         f"{root}/pyproject.toml": "[project]",
         f"{root}/src/konwledge/__init__.py": "",
         f"{root}/src/konwledge/py.typed": "",
+        **dict.fromkeys((f"{root}/src/{module}" for module in API_MODULES), ""),
         f"{root}/tests/test_source.py": "",
     }
     files.update(overrides or {})
@@ -98,7 +106,7 @@ def test_inspect_wheel_accepts_metadata_resources_and_both_entry_points(tmp_path
             "demo_resources",
             "runtime_exclusions",
         ),
-        file_count=6,
+        file_count=10,
     )
 
 
@@ -151,7 +159,7 @@ def test_inspect_sdist_allows_source_tests_with_narrow_warning(tmp_path: Path) -
     result = inspect_sdist(sdist, NAME, VERSION)
 
     assert result.format == "sdist"
-    assert result.file_count == 7
+    assert result.file_count == 11
     assert len(result.warnings) == 1
     assert "source tests" in result.warnings[0]
 
@@ -188,3 +196,47 @@ def test_distributions_require_type_marker(tmp_path: Path, kind: str) -> None:
         write_sdist(sdist, omit=("konwledge-0.1.0/src/konwledge/py.typed",))
         with pytest.raises(ValueError, match=r"py\.typed"):
             inspect_sdist(sdist, NAME, VERSION)
+
+
+@pytest.mark.parametrize("dependency", ["openai", "langchain-openai", "httpx"])
+def test_inspection_rejects_sdk_runtime_dependencies(tmp_path: Path, dependency: str) -> None:
+    wheel = tmp_path / "leaked.whl"
+    write_wheel(
+        wheel,
+        overrides={
+            "konwledge-0.1.0.dist-info/METADATA": WHEEL_METADATA + f"Requires-Dist: {dependency}\n"
+        },
+    )
+    with pytest.raises(ValueError, match="SDK/test runtime"):
+        inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))
+
+
+@pytest.mark.parametrize("dependency", ["fastapi", "uvicorn"])
+def test_inspection_rejects_nonoptional_api_dependencies(tmp_path: Path, dependency: str) -> None:
+    wheel = tmp_path / "nonoptional.whl"
+    metadata = WHEEL_METADATA + f"Requires-Dist: {dependency}\n"
+    write_wheel(wheel, overrides={"konwledge-0.1.0.dist-info/METADATA": metadata})
+    with pytest.raises(ValueError, match="conditional"):
+        inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))
+
+
+@pytest.mark.parametrize("module", API_MODULES)
+def test_inspection_requires_packaged_api_modules(tmp_path: Path, module: str) -> None:
+    wheel = tmp_path / "missing-api.whl"
+    write_wheel(wheel, omit=(module,))
+    with pytest.raises(ValueError, match="missing packaged file"):
+        inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))
+
+
+def test_inspection_requires_api_extra(tmp_path: Path) -> None:
+    wheel = tmp_path / "missing-extra.whl"
+    write_wheel(
+        wheel,
+        overrides={
+            "konwledge-0.1.0.dist-info/METADATA": WHEEL_METADATA.replace(
+                "Provides-Extra: api\n", ""
+            )
+        },
+    )
+    with pytest.raises(ValueError, match="missing the api extra"):
+        inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))

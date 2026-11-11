@@ -120,3 +120,58 @@ raise SystemExit(main(["--version"]))
 
 def test_packaged_type_marker_is_present() -> None:
     assert resources.files("konwledge").joinpath("py.typed").is_file()
+
+
+def test_api_extra_and_sdk_dependencies_remain_separate() -> None:
+    pyproject = _load_toml(PYPROJECT_PATH)
+    project = pyproject["project"]
+    assert project["optional-dependencies"]["api"] == [
+        "fastapi>=0.115,<1",
+        "uvicorn>=0.30,<1",
+    ]
+    runtime = " ".join(project["dependencies"])
+    assert all(
+        name not in runtime for name in ("fastapi", "uvicorn", "httpx", "openai", "langchain")
+    )
+    dev = " ".join(pyproject["dependency-groups"]["dev"])
+    assert all(
+        name in dev for name in ("fastapi", "uvicorn", "httpx", "openai", "langchain-openai")
+    )
+
+
+def test_core_only_root_api_and_cli_imports_are_lazy(tmp_path: Path) -> None:
+    script = """
+import sys
+for name in ("fastapi", "uvicorn", "openai", "langchain_openai", "httpx"):
+    sys.modules[name] = None
+import konwledge
+import konwledge.api
+from konwledge.cli import main
+assert "konwledge.api.server" not in sys.modules
+assert main(["--version"]) == 0
+assert main(["--help"]) == 0
+assert main(["serve", "--help"]) == 0
+assert "konwledge.api.server" not in sys.modules
+"""
+    result = _run_python(script, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_core_only_serve_reports_missing_optional_dependency(tmp_path: Path) -> None:
+    database = tmp_path / "existing.db"
+    database.touch()
+    script = """
+import sys
+sys.modules["fastapi"] = None
+sys.modules["uvicorn"] = None
+from konwledge.cli import main
+raise SystemExit(main(["serve", "--database", "existing.db"]))
+"""
+    result = _run_python(script, tmp_path)
+
+    assert result.returncode == 1
+    assert "konwledge[api]" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert list(tmp_path.iterdir()) == [database]
+    assert database.stat().st_size == 0

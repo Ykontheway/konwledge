@@ -4,6 +4,15 @@ All notable changes to Konwledge are documented in this file.
 
 The project is in alpha. Minor releases may refine public and lower-level APIs as capabilities are added; v0.1.0 does not provide a complete backward-compatibility guarantee.
 
+## Unreleased — U18
+
+- 增加可选 `[api]`（FastAPI/Uvicorn）本机只读上下文传输：健康检查、模型列表、原生 `ContextPacket` 与严格的 OpenAI chat completion 子集；不执行推理、不返回虚构 usage。
+- 增加 `knowledge serve`：仅 loopback，端口 `1..65535`，已有数据库与 SQLite `mode=rw`，密钥只取自 `KNOWLEDGE_API_KEY`（拒绝显式空白），禁用 access log，启动允许 additive schema/FTS 初始化，退出释放 engine。
+- 默认 dev 组增加 API 类型/测试依赖、HTTPX 与官方 OpenAI/LangChain SDK；wheel 核心依赖不变，SDK 不作为运行时依赖。
+- 增加无需外部模型/网络服务的真实 SDK 验收与 CLI 启动测试；固定查询、`as_of` 和检索控制，验证两个 SDK 的 packet 与原生 JSON 相等，未知选项仍拒绝。
+- 分发验证保留 core-only smoke，并为 wheel/sdist 增加仓库外 `[api]` ASGI smoke；检查 API 文件打包、optional marker、无 SDK 运行时依赖、只读请求和 engine 释放。
+- 增加 API 文档并更新架构/发布说明；U18 不提升版本、不修改前端、不部署、不发布。CI 触发范围仍为 PR/`main`，不是功能分支 push。
+
 ## 0.1.0 - 2026-11-11 (prepared, not published)
 
 This release candidate closes local readiness for the first Knowledge CI workflow. It has not been merged to `main`, tagged, published as a GitHub Release, uploaded to PyPI, or used to verify a public demo deployment.

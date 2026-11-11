@@ -23,6 +23,8 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = PROJECT_ROOT / "pyproject.toml"
 SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_smoke.py"
+API_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_api_smoke.py"
+API_MODULES = tuple(f"konwledge/api/{name}.py" for name in ("__init__", "app", "models", "server"))
 FIXTURE_NAMES = (
     "evaluation-demo.json",
     "evaluation-baseline.json",
@@ -119,6 +121,20 @@ def _metadata_identity(text: str, expected_name: str, expected_version: str) -> 
         raise ValueError(f"distribution name mismatch: {actual_name!r}")
     if actual_version != expected_version:
         raise ValueError(f"distribution version mismatch: {actual_version!r}")
+    if "api" not in metadata.get_all("Provides-Extra", []):
+        raise ValueError("distribution is missing the api extra")
+    requirements = metadata.get_all("Requires-Dist", [])
+    api_dependencies: set[str] = set()
+    for requirement in requirements:
+        dependency = canonicalize_name(re.split(r"[\s<>=!~;\[]", requirement, maxsplit=1)[0])
+        if dependency in {"openai", "langchain-openai", "httpx"}:
+            raise ValueError("distribution contains SDK/test runtime dependencies")
+        if dependency in {"fastapi", "uvicorn"}:
+            if not re.search(r"extra\s*==\s*['\"]api['\"]", requirement):
+                raise ValueError("API dependencies must be conditional on the api extra")
+            api_dependencies.add(dependency)
+    if api_dependencies != {"fastapi", "uvicorn"}:
+        raise ValueError("api extra must include FastAPI and Uvicorn")
 
 
 def inspect_wheel(
@@ -157,6 +173,7 @@ def inspect_wheel(
         "konwledge/__init__.py",
         "konwledge/__main__.py",
         "konwledge/py.typed",
+        *API_MODULES,
         *expected_resources,
     }
     missing = sorted(required.difference(names))
@@ -203,6 +220,7 @@ def inspect_sdist(
             f"{root}/pyproject.toml",
             f"{root}/src/konwledge/__init__.py",
             f"{root}/src/konwledge/py.typed",
+            *(f"{root}/src/{module}" for module in API_MODULES),
             *(
                 f"{root}/src/{resource}"
                 for resource in expected_resources
@@ -240,7 +258,13 @@ def inspect_sdist(
 
 def _sanitized_environment() -> dict[str, str]:
     environment = os.environ.copy()
-    for name in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT"):
+    for name in (
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "VIRTUAL_ENV",
+        "UV_PROJECT_ENVIRONMENT",
+        "KNOWLEDGE_API_KEY",
+    ):
         environment.pop(name, None)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     return environment
@@ -301,11 +325,13 @@ def _smoke_install(
     _run([uv, "pip", "install", "--python", str(python), str(artifact)], cwd=scratch)
     run_dir = scratch / f"{distribution_format}-run"
     run_dir.mkdir()
+    smoke_script = run_dir / SMOKE_SCRIPT.name
+    shutil.copyfile(SMOKE_SCRIPT, smoke_script)
     result = _run(
         [
             str(python),
             "-I",
-            str(SMOKE_SCRIPT),
+            str(smoke_script),
             "--expected-version",
             version,
             "--distribution-format",
@@ -321,6 +347,17 @@ def _smoke_install(
         raise RuntimeError(f"installed smoke did not emit valid JSON: {result.stdout!r}") from error
     if not isinstance(summary, dict):
         raise RuntimeError("installed smoke summary must be a JSON object")
+    # 先证明 core-only 无可选依赖，再在同一隔离环境安装 [api]；不安装 HTTPX/SDK。
+    _run([uv, "pip", "install", "--python", str(python), f"{artifact}[api]"], cwd=scratch)
+    api_smoke_script = run_dir / API_SMOKE_SCRIPT.name
+    shutil.copyfile(API_SMOKE_SCRIPT, api_smoke_script)
+    api_result = _run(
+        [str(python), "-I", str(api_smoke_script), "--expected-version", version], cwd=run_dir
+    )
+    api_summary = json.loads(api_result.stdout)
+    if not isinstance(api_summary, dict):
+        raise RuntimeError("installed API smoke summary must be a JSON object")
+    summary["api_extra"] = api_summary
     return summary
 
 

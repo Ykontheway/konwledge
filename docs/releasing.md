@@ -195,3 +195,27 @@ Only after each action succeeds:
 - update status language to distinguish which channels are actually live.
 
 If any channel fails, report that channel as incomplete. Do not delete or overwrite evidence to make the release appear complete.
+
+## U18 集成检查补充（Unreleased，非发布）
+
+U18 保持 `0.1.0`，新增可选本机上下文 API；v0.1.0 仍然是已准备、未发布候选。没有提交/推送、tag、发布、部署或远端 CI 通过的隐含承诺。工作分支 push 不触发当前默认 CI，触发条件仍为 PR/`main`。
+
+```bash
+uv sync --locked --dev
+uv run pytest tests/test_api.py tests/test_api_cli.py tests/test_api_clients.py tests/test_distribution.py tests/test_release_metadata.py
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src tests scripts
+uv run pytest --cov=konwledge --cov-report=term-missing
+uv run python scripts/verify_distribution.py --output-dir dist/u18-verification
+```
+
+发布评审需额外确认：
+
+1. wheel 与 sdist 含 `api/__init__.py`、`app.py`、`models.py`、`server.py`；FastAPI/Uvicorn 的 `Requires-Dist` 仅在 `extra == 'api'` 时生效，SDK/HTTPX 不进入运行时依赖。
+2. `uv.lock` 通过 `uv lock` 重新生成；默认 dev 含 FastAPI/Uvicorn，保证不显式选 extra 时静态类型和默认测试也能运行。dev 同时包含真实 SDK 验收依赖，但不能把 dev 安装成功当作 core-only 证据。
+3. `verify_distribution.py` 分别先安装 wheel/sdist 的 core-only 版本，证明 optional 包缺失时 root/API 导入、help/version 和缺 extra 友好错误仍有效；再安装同一产物的 `[api]`。复制到仓库外的 `installed_api_smoke.py` 用 `python -I` 证明 API 来自 site-packages、不含 OpenAI/LangChain/HTTPX，驱动 ASGI 验证 packet、鉴权、严格错误与请求只读，并替换 `uvicorn.run` 验证 CLI 启动及 engine 释放。
+4. 两份 `*-smoke-summary.json` 中新增 `api_extra` 结果，CI 原有上传模式会保存它们；默认 CI 同步 dev 已覆盖 API 类型/SDK 测试，无需把 SDK 加到 wheel 或改变 feature-push 触发条件。
+5. [API 文档](api.md) 明确 `serve` 的已有数据库要求、loopback/端口/环境密钥约束及启动 additive schema/FTS 可能写库，与 HTTP 请求只读区分；OpenAI 子集只返回 packet，无真实推理、usage、stream/tools/sampling/Responses/对话历史。
+
+测试不得调用外部 provider，不启动后台服务或部署；本地产物仍须单独取得发布授权，不能因为分发 smoke 成功而标记为已发布。

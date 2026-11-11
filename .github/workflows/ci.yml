@@ -27,6 +27,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
+      # dev 包含 API 类型检查和离线 OpenAI/LangChain 验收依赖；SDK 不进入 wheel。
       - name: Install dependencies
         run: uv sync --locked --dev
 
@@ -61,7 +62,7 @@ jobs:
         run: |
           uv run knowledge evaluation gate examples/evaluation-baseline.json "$RUNNER_TEMP/evaluation-candidate.json" --policy examples/evaluation-gate.json --json > "$RUNNER_TEMP/evaluation-gate.json"
 
-      - name: Verify wheel and source distribution
+      - name: Verify wheel and source distribution (core-only and api extra)
         run: uv run python scripts/verify_distribution.py --output-dir "$RUNNER_TEMP/distribution"
 
       - name: Upload evaluation evidence

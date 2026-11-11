@@ -108,3 +108,16 @@ The in-memory vector route is an exact linear scan. LanceDB is optional and call
 The V1 snapshot is a deterministic, versioned read model. The V2 site renders that committed data and does not reimplement lifecycle rules. Golden tests detect drift between models, JSON Schema, snapshot output, and generated frontend types.
 
 Frontend development is paused at V2. V3/V4 views, live-page publication, and further deployment are deferred. A deployment workflow in the repository is configuration, not evidence that a public site is live.
+
+## U18 可选本机 HTTP 传输（Unreleased）
+
+新增接口层 `src/konwledge/api/`：`models.py` 定义严格请求/响应，`app.py` 把已有 `KnowledgeLibrary.build_context()` 包装为只读路由，`server.py` 管理本机 CLI 启动与 engine 生命周期。完整协议见 [API 文档](api.md)。U18 不提升 `0.1.0` 版本，不改变快照或前端边界，也不是已部署服务。
+
+- 核心 wheel 依赖不增加 FastAPI/Uvicorn；它们由 `[api]` 安装。API 工厂延迟导入 FastAPI，CLI 仅在 `serve` 分支加载启动模块。默认 dev 组为了类型检查和默认测试安装 API、HTTPX、官方 OpenAI 与 LangChain SDK；SDK 不是运行时依赖。
+- `serve` 先校验 loopback allowlist、端口、非空环境密钥和已有数据库文件，再打开 engine。SQLite URI `mode=rw` 阻止校验后的缺失库创建；启动调用 `create_schema()` 允许已有 additive upgrade/FTS 初始化。运行结束/异常时 `finally` 释放 engine。
+- `create_app(library)` 不初始化存储、不关闭调用者 engine；通过 app 内 `RLock` 串行化库请求，限制同一 app 的并发 Unit of Work。它不提供跨进程写入协调或固定全库快照。
+- `/v1/context` 直接返回 packet；`/v1/chat/completions` 只把同一 packet JSON 放入 assistant content。固定模型 `knowledge-context`、一条 user 消息，无推理、对话历史、工具、sampling、Responses API 或 streaming；不返回虚构 usage。
+- 密钥只读取 `KNOWLEDGE_API_KEY`，显式空白拒绝，设置密钥后保护 `/v1/*` 并禁用 HTTP 文档页；`/health` 公开。`localhost` 映射到 `127.0.0.1`，access log 关闭。请求只读，错误不反射异常文本；packet 引文和路径仍是敏感的未受信本地数据。
+- 默认 CLI 只有 lexical，无 provider 自动配置。注入向量服务的嵌入式 API 保留核心的配置错误、缺失向量诊断和明确失败，不会静默调用外部模型或退化为成功空结果。
+
+验收分两层：源码测试用真实 OpenAI/LangChain SDK 与完整 HTTPX → TestClient 传输验证 packet 等价及严格拒绝选项；分发测试在仓库外逐个安装 wheel/sdist，先验证 core-only，再安装 `[api]` 并直接驱动 ASGI。后一环境不安装 SDK/HTTPX，CLI 启动用 `uvicorn.run` 桩验证，无后台进程或外部网络请求。

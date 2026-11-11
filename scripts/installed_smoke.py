@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.metadata
+import importlib.util
 import json
 import os
 import site
@@ -29,7 +30,13 @@ def require(condition: bool, message: str) -> None:
 
 def sanitized_environment() -> dict[str, str]:
     environment = os.environ.copy()
-    for name in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT"):
+    for name in (
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "VIRTUAL_ENV",
+        "UV_PROJECT_ENVIRONMENT",
+        "KNOWLEDGE_API_KEY",
+    ):
         environment.pop(name, None)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     return environment
@@ -100,6 +107,12 @@ def is_installed_location(package_file: Path, prefix: Path, site_packages: Seque
 def verify_installed_identity(expected_version: str) -> None:
     import konwledge
 
+    for dependency in ("fastapi", "uvicorn", "httpx", "openai", "langchain_openai"):
+        require(importlib.util.find_spec(dependency) is None, f"core install leaked {dependency}")
+    import konwledge.api
+
+    require("fastapi" not in sys.modules, "API package eagerly imported FastAPI")
+    require("uvicorn" not in sys.modules, "API package eagerly imported Uvicorn")
     require("konwledge.application" not in sys.modules, "root package eagerly imported application")
     from konwledge import KnowledgeLibrary
 
@@ -136,6 +149,14 @@ def verify_cli_aliases(run_dir: Path, expected_version: str) -> tuple[Path, Path
     require(
         "Import and inspect traceable local knowledge" in module_help.stdout, "module help mismatch"
     )
+    serve_help = cli(knowledge, run_dir, "serve", "--help")
+    require("--database" in serve_help.stdout, "core-only serve help is unavailable")
+    existing = run_dir / "existing.db"
+    existing.touch()
+    missing_api = cli(knowledge, run_dir, "serve", "--database", str(existing), expected=1)
+    require("konwledge[api]" in missing_api.stderr, "missing API extra diagnostic is unavailable")
+    require(existing.stat().st_size == 0, "missing API dependency modified database")
+    existing.unlink()
     return knowledge, konwledge
 
 

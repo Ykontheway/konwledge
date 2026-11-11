@@ -238,6 +238,33 @@ def _status_label(state: UnitState | None) -> str:
     return state.status.value
 
 
+@app.command("serve")
+def serve_command(
+    database: Annotated[
+        Path,
+        typer.Option("--database", "-d", help="已有 SQLite 数据库文件（不会自动创建）。"),
+    ] = DEFAULT_DATABASE,
+    host: Annotated[
+        str, typer.Option("--host", help="仅允许 127.0.0.1、::1 或 localhost。")
+    ] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", min=1, max=65535)] = 8000,
+) -> None:
+    """运行本机只读上下文 API；密钥仅从 KNOWLEDGE_API_KEY 环境变量读取。"""
+
+    # 可选 HTTP 依赖不得影响 core-only 安装的 import/help/version。
+    from konwledge.api.server import run_server
+
+    try:
+        run_server(database, host=host, port=port)
+    except ValueError as error:
+        _fail(str(error), code=2)
+    except ImportError:
+        _fail("缺少 API 可选依赖；请安装：pip install 'konwledge[api]'")
+    except Exception:
+        # 包括路径解析与 engine 释放失败，统一隐藏底层异常内容。
+        _fail("本地 API 启动或运行失败；请检查数据库与端口配置")
+
+
 @app.command("import")
 def import_command(
     path: Annotated[

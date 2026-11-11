@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> Status: **v0.1.0 release candidate prepared (alpha)**. U17 closes local release readiness with coherent version metadata, a lazy root API, installed-distribution verification, and maintainer/contributor documentation. The version has not been published: there is no `v0.1.0` tag, GitHub Release, PyPI release, or verified public demo deployment. Per the 2026-11-06 scope decision, frontend work remains paused at V2; V3/V4, live-page publication, and further deployment are deferred.
+> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API、`knowledge serve`、官方 OpenAI/LangChain SDK 验收及 core-only/[api] 隔离分发验证，版本号仍为 `0.1.0`。本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。按 2026-11-06 范围决定，前端停留 V2，V3/V4 与部署继续暂停。
 
 ## Implemented increments
 
@@ -27,8 +27,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U15 | 2026-11-10 | Immutable versioned evaluation sets, retrieval metrics, read-only reports, and evaluation SDK/CLI |
 | U16 | 2026-11-10 | Portable healthy baselines, deterministic report comparison, policy-driven regression gates, and CI-ready exit codes |
 | U17 | 2026-11-11 | v0.1.0 metadata coherence, lazy root API, isolated wheel/sdist verification, and release/contributor/architecture documentation |
+| U18 | Unreleased | 可选 `[api]` 本机只读 HTTP、`serve` 安全启动、OpenAI/LangChain SDK 验收、可选依赖及隔离分发验证（无版本提升） |
 
-Each increment builds on the preceding implementation. This branch contains U01-U17, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend development and deployment are paused; V3/V4 and publication of a live page are not part of this release-readiness closure.
+Each increment builds on the preceding implementation. This branch contains U01-U18, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend development and deployment are paused; V3/V4 and publication of a live page are not part of this release-readiness closure.
 
 ## Why this project
 
@@ -99,11 +100,22 @@ uv run knowledge evaluation gate examples/evaluation-baseline.json candidate.jso
 
 A passing gate exits `0`; a valid regression exits `3`. Invalid input exits `2`, and runtime or file I/O failures exit `1`. In the packaged story, the active guide uses port `8080`; the FAQ's `8000` answer is stale and excluded by default. Baseline replacement is an intentional review action, never an automatic CI side effect. The packaged hash embedding provider and demo vectors exercise plumbing only; they are not semantic-quality or production-performance evidence.
 
+## 本机 API（U18，Unreleased）
+
+```bash
+python -m pip install '.[api]'
+knowledge import examples --database .konwledge/knowledge.db
+knowledge serve --host 127.0.0.1 --port 8000 --database .konwledge/knowledge.db
+```
+
+`serve` 仅接受 loopback（`127.0.0.1`、`::1`、`localhost`）与已有数据库；不会自动创建缺失库。启动允许现有 additive schema/FTS 初始化，HTTP 请求只读。密钥仅取自 `KNOWLEDGE_API_KEY` 环境变量，显式空白拒绝启动，access logging 关闭。原生 `/v1/context` 返回 `ContextPacket`；本机 `/v1/chat/completions` 固定模型 `knowledge-context`、一条 user 消息，assistant content 是 packet JSON，**不调用模型、不生成答案、不编造 usage**。stream/tools/sampling/Responses API/历史对话不支持。
+
+核心安装的 help/version 不依赖 `[api]`。默认 dev 组为测试和类型检查安装 API、HTTPX 与客户端 SDK；SDK 不进入 wheel 运行时依赖。详见 [API 请求 schema、鉴权、官方 SDK 示例与验收](docs/api.md)。分发验证对 wheel/sdist 分别先跑 core-only，再跑 `[api]` 隔离 ASGI smoke，不监听端口或请求外部 provider。
+
 ## Import CLI
 
-The `knowledge` entry point creates the SQLite schema and parent directory automatically. Its
-default database is `.konwledge/knowledge.db`; pass `--database` (or `-d`) to every command when
-you want another explicit location. From an empty checkout, the shortest end-to-end path is:
+导入等已有 CLI 命令会自动创建 SQLite schema 与父目录；`serve` 例外，必须指向已有数据库文件。
+默认数据库为 `.konwledge/knowledge.db`，可通过 `--database`（或 `-d`）指定其他位置。空仓库示例：
 
 ```bash
 uv run knowledge import examples --database .konwledge/demo.db
@@ -168,6 +180,7 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   ├── ci.yml
 │   └── deploy-demo.yml
 ├── src/konwledge/
+│   ├── api/                # 可选本机上下文 HTTP 传输（U18）
 │   ├── domain/
 │   │   ├── __init__.py
 │   │   ├── evaluation.py
@@ -240,9 +253,11 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   ├── getting-started.md
 │   └── lifecycle.txt
 ├── scripts/
+│   ├── installed_api_smoke.py # 仓库外 [api] ASGI 验证，无 SDK/监听
 │   ├── installed_smoke.py    # smoke checks run from isolated installations
 │   └── verify_distribution.py
 ├── docs/
+│   ├── api.md
 │   ├── architecture.md
 │   └── releasing.md
 ├── tests/
@@ -259,7 +274,7 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 └── pyproject.toml
 ```
 
-The remaining modules will be added only when they gain executable behavior: `providers` and `api`.
+`api/` 已实现可选本机传输；`providers` 等其余模块仅在具有可执行行为时新增。
 
 ## Public Python API
 
