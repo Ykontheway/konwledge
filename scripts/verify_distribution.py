@@ -24,7 +24,19 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = PROJECT_ROOT / "pyproject.toml"
 SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_smoke.py"
 API_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_api_smoke.py"
+POSTGRES_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_postgres_smoke.py"
 API_MODULES = tuple(f"konwledge/api/{name}.py" for name in ("__init__", "app", "models", "server"))
+DATABASE_SCHEMA_MODULES = (
+    "konwledge/database_schema/__init__.py",
+    "konwledge/database_schema/collector.py",
+    "konwledge/database_schema/models.py",
+    "konwledge/database_schema/repository.py",
+    "konwledge/database_schema/service.py",
+    "konwledge/database_schema/storage.py",
+    "konwledge/domain/database_schema.py",
+    "konwledge/newcli_database_schema.py",
+    "konwledge/storage/database_schema.py",
+)
 FIXTURE_NAMES = (
     "evaluation-demo.json",
     "evaluation-baseline.json",
@@ -121,10 +133,13 @@ def _metadata_identity(text: str, expected_name: str, expected_version: str) -> 
         raise ValueError(f"distribution name mismatch: {actual_name!r}")
     if actual_version != expected_version:
         raise ValueError(f"distribution version mismatch: {actual_version!r}")
-    if "api" not in metadata.get_all("Provides-Extra", []):
-        raise ValueError("distribution is missing the api extra")
+    extras = set(metadata.get_all("Provides-Extra", []))
+    for extra in ("api", "postgres"):
+        if extra not in extras:
+            raise ValueError(f"distribution is missing the {extra} extra")
     requirements = metadata.get_all("Requires-Dist", [])
     api_dependencies: set[str] = set()
+    postgres_dependencies: set[str] = set()
     for requirement in requirements:
         dependency = canonicalize_name(re.split(r"[\s<>=!~;\[]", requirement, maxsplit=1)[0])
         if dependency in {"openai", "langchain-openai", "httpx"}:
@@ -133,8 +148,24 @@ def _metadata_identity(text: str, expected_name: str, expected_version: str) -> 
             if not re.search(r"extra\s*==\s*['\"]api['\"]", requirement):
                 raise ValueError("API dependencies must be conditional on the api extra")
             api_dependencies.add(dependency)
+        if dependency == "psycopg":
+            if not re.search(r"extra\s*==\s*['\"]postgres['\"]", requirement):
+                raise ValueError("psycopg must be conditional on the postgres extra")
+            package_part = requirement.split(";", maxsplit=1)[0]
+            extras_match = re.match(r"\s*psycopg\s*\[([^]]+)]", package_part, re.IGNORECASE)
+            extras = (
+                {canonicalize_name(item.strip()) for item in extras_match.group(1).split(",")}
+                if extras_match is not None
+                else set()
+            )
+            specifiers = set(re.findall(r"(===|==|!=|~=|<=|>=|<|>)\s*([^\s,;]+)", package_part))
+            if extras != {"binary"} or specifiers != {(">=", "3.2"), ("<", "4")}:
+                raise ValueError("postgres extra must pin psycopg[binary]>=3.2,<4")
+            postgres_dependencies.add(dependency)
     if api_dependencies != {"fastapi", "uvicorn"}:
         raise ValueError("api extra must include FastAPI and Uvicorn")
+    if postgres_dependencies != {"psycopg"}:
+        raise ValueError("postgres extra must include psycopg[binary]")
 
 
 def inspect_wheel(
@@ -174,6 +205,7 @@ def inspect_wheel(
         "konwledge/__main__.py",
         "konwledge/py.typed",
         *API_MODULES,
+        *DATABASE_SCHEMA_MODULES,
         *expected_resources,
     }
     missing = sorted(required.difference(names))
@@ -221,6 +253,7 @@ def inspect_sdist(
             f"{root}/src/konwledge/__init__.py",
             f"{root}/src/konwledge/py.typed",
             *(f"{root}/src/{module}" for module in API_MODULES),
+            *(f"{root}/src/{module}" for module in DATABASE_SCHEMA_MODULES),
             *(
                 f"{root}/src/{resource}"
                 for resource in expected_resources
@@ -323,6 +356,19 @@ def _smoke_install(
     _run([uv, "venv", "--python", target_python, str(venv)], cwd=scratch)
     python = _venv_python(venv)
     _run([uv, "pip", "install", "--python", str(python), str(artifact)], cwd=scratch)
+    _run(
+        [
+            str(python),
+            "-I",
+            "-c",
+            (
+                "import importlib.util; "
+                "assert importlib.util.find_spec('psycopg') is None, "
+                "'core install leaked postgres extra'"
+            ),
+        ],
+        cwd=scratch,
+    )
     run_dir = scratch / f"{distribution_format}-run"
     run_dir.mkdir()
     smoke_script = run_dir / SMOKE_SCRIPT.name
@@ -358,6 +404,35 @@ def _smoke_install(
     if not isinstance(api_summary, dict):
         raise RuntimeError("installed API smoke summary must be a JSON object")
     summary["api_extra"] = api_summary
+
+    postgres_venv = scratch / f"{distribution_format}-postgres-venv"
+    _run([uv, "venv", "--python", target_python, str(postgres_venv)], cwd=scratch)
+    postgres_python = _venv_python(postgres_venv)
+    _run(
+        [uv, "pip", "install", "--python", str(postgres_python), f"{artifact}[postgres]"],
+        cwd=scratch,
+    )
+    postgres_smoke_script = run_dir / POSTGRES_SMOKE_SCRIPT.name
+    shutil.copyfile(POSTGRES_SMOKE_SCRIPT, postgres_smoke_script)
+    postgres_result = _run(
+        [
+            str(postgres_python),
+            "-I",
+            str(postgres_smoke_script),
+            "--expected-version",
+            version,
+        ],
+        cwd=run_dir,
+    )
+    try:
+        postgres_summary = json.loads(postgres_result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"installed postgres smoke did not emit valid JSON: {postgres_result.stdout!r}"
+        ) from error
+    if not isinstance(postgres_summary, dict):
+        raise RuntimeError("installed postgres smoke summary must be a JSON object")
+    summary["postgres_extra"] = postgres_summary
     return summary
 
 
@@ -430,7 +505,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--python",
         default=sys.executable,
-        help="Existing Python executable for both isolated venvs (default: current interpreter).",
+        help="Existing Python executable for all isolated venvs (default: current interpreter).",
     )
     return parser.parse_args(argv)
 

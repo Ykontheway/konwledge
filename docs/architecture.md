@@ -13,6 +13,7 @@ It is not a hosted knowledge service, distributed vector database, automatic ans
 | Public facade | `src/konwledge/__init__.py`, `application.py` | Lazily export `KnowledgeLibrary`; coordinate import, lifecycle, freshness, conflicts, conversations, retrieval, context, and evaluation |
 | Domain | `src/konwledge/domain/` | Immutable validated models for sources, documents, units, revisions, citations, conflicts, conversations, freshness, and evaluation sets |
 | Conversation review | `src/konwledge/conversations/` | Validate immutable versions, extract explicit candidates, and atomically materialize only approved spans |
+| Database schema | `src/konwledge/database_schema/` | Collect schema-only catalog metadata, validate canonical snapshots, diff versions, and atomically publish current table units |
 | Ingestion | `src/konwledge/ingestion/` | Load UTF-8 text, normalize it, split traceable units, and persist idempotent document versions |
 | Lifecycle | `src/konwledge/lifecycle/` | Diff versions, maintain lineage and publication history, resolve as-of status, and apply stale/refresh transitions |
 | Conflict analysis | `src/konwledge/conflicts/` | Produce conservative candidates with frozen evidence and append human review history |
@@ -93,6 +94,18 @@ Lineage retrieval metrics answer whether expected knowledge was retrieved. They 
 
 CLI 的 conversation/candidate JSON 输出保留原始正文和审核字段，可能包含私密聊天。它不经过 U16 compact baseline 脱敏边界。U19 不新增 HTTP 路由；U18 `/v1/context` 与 chat completion 子集继续只读，只能检索已经批准并发布的候选。
 
+## U20 数据库 schema 边界（Unreleased）
+
+U20 把外部数据库 catalog 视为一种版本化来源。collector 先在 Knowledge Library 事务之外完成一次完整采集，随后 `DatabaseSchemaService` 才打开 `UnitOfWork`，保存不可变 snapshot、document、table knowledge units、revision 和 publication。采集失败不会新建元数据库；持久化使用已采集的 snapshot，不会二次连接源库后混入并发变化。
+
+SQLite collector 只打开已有普通文件，使用 `mode=ro`、catalog authorizer、元数据 PRAGMA、进度处理器和显式 rollback。CLI 与 service 都拒绝 Knowledge Library 元数据库，包括 symlink 或 hardlink 别名。PostgreSQL collector 只检查调用者指定的一个非系统 schema，使用 psycopg 3、`REPEATABLE READ READ ONLY` 事务和超时。DSN、用户名、密码与查询参数不进入来源 URI 或默认 metadata。
+
+snapshot 保存表、视图、列、索引、外键和可获得的注释/选项，不读取业务行。注释、默认值、索引表达式和 DDL 片段仍可能敏感，所以本地数据库和导出文件不属于脱敏制品。捕获不管理身份、SSO 或权限；PostgreSQL 调用者应提供只读、最小权限角色。完整操作说明见 [数据库 schema 捕获](database-schema.md)。
+
+表身份由 namespace、名称和对象类型组成。结构未变化时，content hash 保持幂等；表身份不变时 lineage 稳定。diff 不猜测重命名。恢复历史结构会复用已有 document，但追加新的 capture version 和 publication 记录，保留真实时间线。
+
+当前 schema units 进入既有 active-only 检索和 context，不新增 HTTP 写路由。`SourceKind.DATABASE` 不在 V1 demo snapshot 的冻结枚举中，因此 V1 导出明确失败，不省略或改标数据库来源，也不更新 golden、JSON Schema 或前端生成类型。
+
 ## Error contracts
 
 SDK validation errors are explicit Pydantic or `ValueError` failures. Missing entities use lookup-oriented errors; invalid lifecycle transitions and missing vector configuration have specific exceptions. Storage corruption and unavailable FTS5 surface as runtime failures. Provider/index exceptions are not converted into successful empty searches.
@@ -116,7 +129,7 @@ The in-memory vector route is an exact linear scan. LanceDB is optional and call
 
 ## Static demo boundary
 
-The V1 snapshot is a deterministic, versioned read model. The V2 site renders that committed data and does not reimplement lifecycle rules. Golden tests detect drift between models, JSON Schema, snapshot output, and generated frontend types. Its source-kind enum is deliberately frozen at `url`, `file`, `repository`, and `manual`, independently of the evolving domain enum. An approved conversation remains a `conversation` source with full provenance, so V1 export fails closed instead of omitting or reclassifying it. Pending and rejected candidates create no source and leave existing demo exports unchanged. U19 does not regenerate the snapshot/schema goldens or frontend types.
+The V1 snapshot is a deterministic, versioned read model. The V2 site renders that committed data and does not reimplement lifecycle rules. Golden tests detect drift between models, JSON Schema, snapshot output, and generated frontend types. Its source-kind enum is deliberately frozen at `url`, `file`, `repository`, and `manual`, independently of the evolving domain enum. An approved conversation remains a `conversation` source and a captured database remains a `database` source with full provenance, so V1 export fails closed instead of omitting or reclassifying either kind. Pending and rejected candidates create no source and leave existing demo exports unchanged. U19 and U20 do not regenerate the snapshot/schema goldens or frontend types.
 
 Frontend development is paused at V2. V3/V4 views, live-page publication, and further deployment are deferred. A deployment workflow in the repository is configuration, not evidence that a public site is live.
 

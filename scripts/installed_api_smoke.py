@@ -7,6 +7,7 @@ import asyncio
 import importlib.util
 import json
 import site
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -130,6 +131,29 @@ def verify_routes(application: FastAPI) -> None:
         )
     )
     assert status == 200 and not ContextPacket.model_validate_json(json.dumps(rejected)).blocks
+    status, active_schema = asyncio.run(
+        request(
+            application,
+            "POST",
+            "/v1/context",
+            {"query": "api_active_schema_field", "as_of": "2100-01-01T00:00:00Z"},
+        )
+    )
+    assert (
+        status == 200
+        and len(ContextPacket.model_validate_json(json.dumps(active_schema)).blocks) == 1
+    )
+    status, retired_schema = asyncio.run(
+        request(
+            application,
+            "POST",
+            "/v1/context",
+            {"query": "api_old_schema_field", "as_of": "2100-01-01T00:00:00Z"},
+        )
+    )
+    assert (
+        status == 200 and not ContextPacket.model_validate_json(json.dumps(retired_schema)).blocks
+    )
     status, chat = asyncio.run(
         request(
             application,
@@ -252,6 +276,52 @@ def verify(root: Path) -> None:
             str(database),
         )
         assert len(json.loads(history.stdout)) == 1
+
+    schema_target = root / "api-schema-source.sqlite"
+    schema_connection = sqlite3.connect(schema_target)
+    try:
+        schema_connection.execute(
+            "CREATE TABLE api_schema(id INTEGER PRIMARY KEY, api_old_schema_field TEXT)"
+        )
+        schema_connection.commit()
+    finally:
+        schema_connection.close()
+    first_schema = json.loads(
+        run_cli(
+            root,
+            "database",
+            "capture-sqlite",
+            str(schema_target),
+            "--name",
+            "API synthetic schema",
+            "--json",
+            "-d",
+            str(database),
+        ).stdout
+    )
+    assert first_schema["created"] is True and first_schema["version"] == 1
+    schema_connection = sqlite3.connect(schema_target)
+    try:
+        schema_connection.execute("ALTER TABLE api_schema ADD COLUMN api_active_schema_field TEXT")
+        schema_connection.execute("ALTER TABLE api_schema DROP COLUMN api_old_schema_field")
+        schema_connection.commit()
+    finally:
+        schema_connection.close()
+    second_schema = json.loads(
+        run_cli(
+            root,
+            "database",
+            "capture-sqlite",
+            str(schema_target),
+            "--name",
+            "API synthetic schema",
+            "--json",
+            "-d",
+            str(database),
+        ).stdout
+    )
+    assert second_schema["created"] is True and second_schema["version"] == 2
+
     writes: list[str] = []
 
     def capture_sql(
@@ -326,6 +396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "no_sdks",
                     "asgi_routes",
                     "conversation_approval_readonly",
+                    "database_schema_current_only",
                     "readonly",
                     "cli_startup_disposal",
                 ],

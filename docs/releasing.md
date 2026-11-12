@@ -4,7 +4,7 @@ This document is a maintainer checklist. It separates a release-ready source tre
 
 ## Current v0.1.0 state
 
-As of 2026-11-11, v0.1.0 is prepared as an alpha release candidate in source metadata. U18 and U19 remain Unreleased additions and do not change the version. This work does not merge `main`, create a pull request, tag a commit, create a GitHub Release, publish to PyPI, or deploy/verify a public site. Local artifacts produced during verification are not a published release.
+As of 2026-11-12, v0.1.0 is prepared as an alpha release candidate in source metadata. U18, U19, and U20 remain Unreleased additions and do not change the version. This work does not merge `main`, create a pull request, tag a commit, create a GitHub Release, publish to PyPI, or deploy/verify a public site. Local artifacts produced during verification are not a published release.
 
 No installation instructions should claim that `konwledge==0.1.0` is available from PyPI until the package index confirms it.
 
@@ -245,3 +245,34 @@ uv run python scripts/verify_distribution.py --output-dir dist/u19-verification
 - `examples/conversation-demo.json` 是合成数据；原始聊天、conversation/candidate JSON、导出和数据库均按私密本地制品处理，不加入公开发布资产。
 
 U19 不要求新增 console entry point、依赖、API 路由、前端或部署。分发验证成功仍只说明本地产物可供评审，不表示 v0.1.0 已发布。
+
+## U20 集成检查补充（Unreleased，非发布）
+
+U20 保持 `0.1.0`。核心安装支持 SQLite schema 捕获；PostgreSQL 驱动仅由 `[postgres]` extra 提供。测试只能使用合成 SQLite 文件或 CI 临时 PostgreSQL 服务，不得连接用户数据库、读取真实凭据或调用外部服务。
+
+建议在数据库安全测试与 PostgreSQL 集成测试文件就绪后运行：
+
+```bash
+uv lock --check
+uv run --no-sync pytest tests/test_database_schema_cli.py tests/test_database_schema_core.py
+uv sync --locked --dev --extra postgres
+KNOWLEDGE_TEST_POSTGRES_DSN='postgresql+psycopg://konwledge_test:konwledge_test@127.0.0.1:5432/konwledge_test' \
+  uv run --no-sync pytest tests/test_database_schema_postgres.py
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src tests scripts
+uv run python scripts/verify_distribution.py --output-dir dist/u20-verification
+```
+
+发布评审还要确认以下事项：
+
+- wheel 与 sdist 的核心依赖不含 psycopg；`psycopg[binary]>=3.2,<4` 只在 `extra == 'postgres'` 时生效。默认 quality job 仍执行 `uv sync --locked --dev`，PostgreSQL 16/17 专用 job 才选择该 extra。
+- `capture-postgres` 只接受 `--dsn-env ENVNAME`，没有 `--dsn`。日志、JSON、错误、来源 URI 和 `Source.metadata` 都不能包含 DSN、用户名、密码、原始 SQL 或底层连接错误。
+- 无效标题、timeout、环境变量名、schema、缺失 SQLite 文件、目录及元数据库 symlink/hardlink 在创建元数据库和父目录前退出。外部捕获失败也不能留下新元数据库。
+- core-only wheel/sdist 从仓库外创建合成 SQLite 源，完成首次捕获、未变化幂等捕获、schema 变更、history/diff/export，并证明 sentinel 业务行不进入 snapshot。list/history 不改变元数据行数。
+- `[api]` 隔离 smoke 捕获两版合成 schema 后，在 SQL 写监听阶段验证当前字段可检索、已删除字段不可检索，HTTP 请求不产生写入。
+- wheel 和 sdist 各有独立的 `[postgres]` 隔离环境，验证 psycopg 3 的 binary 实现、标准 DSN 归一化、连接失败脱敏和导入路径。smoke 不连接业务数据库，结果记录在 `postgres_extra` 中。
+- PostgreSQL 角色使用最小只读权限；捕获事务为 read-only，并设置连接、statement 和 lock timeout。集成测试的账号和密码只能是 CI 临时 dummy 值，不是用户 secret。
+- schema 注释、默认值、表达式和 DDL 可能敏感。数据库、snapshot 和导出文件不进入公开发布资产。`SourceKind.DATABASE` 继续让 V1 snapshot 导出明确失败，不改 demo golden 和前端类型。
+
+U20 不新增前端、部署、LLM 调用、真实数据库访问或发布动作。CI 与本地检查通过只说明代码可供评审。

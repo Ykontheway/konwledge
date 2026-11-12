@@ -12,6 +12,7 @@ from konwledge.storage.database import (
     create_session_factory,
     create_sqlite_engine,
 )
+from konwledge.storage.database_schema import DatabaseSchemaSnapshotRepository
 from konwledge.storage.evaluation import EvaluationSetRepository
 from konwledge.storage.repository import (
     CitationRepository,
@@ -31,6 +32,7 @@ __all__ = [
     "ConversationCandidateRepository",
     "ConversationRepository",
     "ConversationReviewRepository",
+    "DatabaseSchemaSnapshotRepository",
     "DocumentRepository",
     "EntityNotFoundError",
     "EvaluationSetRepository",

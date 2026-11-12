@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import site
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -278,6 +279,146 @@ def verify_plaintext_context(knowledge: Path, root: Path) -> None:
         len(ContextPacket.model_validate_json(included.stdout).blocks) == 1,
         "stale evidence opt-in failed",
     )
+
+
+def verify_database_schema(knowledge: Path, root: Path) -> None:
+    """Exercise U20 through an installed core-only CLI with a synthetic SQLite target."""
+
+    target = root / "synthetic-source.sqlite"
+    database = root / "database-schema-metadata.sqlite"
+    require(target != database, "schema source and metadata paths must be distinct")
+    connection = sqlite3.connect(target)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE smoke_table(id INTEGER PRIMARY KEY, installed_old_field TEXT);
+            CREATE TABLE sentinel(payload TEXT);
+            INSERT INTO sentinel(payload) VALUES ('INSTALLED_BUSINESS_ROW_SECRET');
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    first_process = cli(
+        knowledge,
+        root,
+        "database",
+        "capture-sqlite",
+        str(target),
+        "--name",
+        "Installed synthetic schema",
+        "--json",
+        "-d",
+        str(database),
+    )
+    first = json.loads(first_process.stdout)
+    require(first["created"] is True and first["version"] == 1, "first schema capture failed")
+    repeated = json.loads(
+        cli(
+            knowledge,
+            root,
+            "database",
+            "capture-sqlite",
+            str(target),
+            "--name",
+            "Installed synthetic schema",
+            "--json",
+            "-d",
+            str(database),
+        ).stdout
+    )
+    require(
+        repeated["created"] is False and repeated["version"] == 1,
+        "unchanged schema capture was not idempotent",
+    )
+
+    connection = sqlite3.connect(target)
+    try:
+        connection.execute("ALTER TABLE smoke_table ADD COLUMN installed_active_field TEXT")
+        connection.execute("ALTER TABLE smoke_table DROP COLUMN installed_old_field")
+        connection.commit()
+    finally:
+        connection.close()
+    second = json.loads(
+        cli(
+            knowledge,
+            root,
+            "database",
+            "capture-sqlite",
+            str(target),
+            "--name",
+            "Installed synthetic schema",
+            "--json",
+            "-d",
+            str(database),
+        ).stdout
+    )
+    require(second["created"] is True and second["version"] == 2, "schema update was missed")
+    source_id = first["source_id"]
+    diff = json.loads(
+        cli(
+            knowledge,
+            root,
+            "database",
+            "diff",
+            source_id,
+            "--from-version",
+            "1",
+            "--to-version",
+            "2",
+            "--json",
+            "-d",
+            str(database),
+        ).stdout
+    )
+    require(diff["changed_tables"], "installed schema diff did not report the changed table")
+    exported = cli(
+        knowledge,
+        root,
+        "database",
+        "export",
+        source_id,
+        "--version",
+        "2",
+        "-d",
+        str(database),
+    ).stdout
+    require("installed_active_field" in exported, "new schema field was not exported")
+    require("installed_old_field" not in exported, "removed schema field remained current")
+    require("INSTALLED_BUSINESS_ROW_SECRET" not in exported, "business row leaked into snapshot")
+
+    metadata = sqlite3.connect(database)
+    try:
+        before = tuple(
+            metadata.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            for table in ("sources", "documents", "knowledge_units", "database_schema_snapshots")
+        )
+    finally:
+        metadata.close()
+    cli(knowledge, root, "database", "list", "--json", "-d", str(database))
+    history = json.loads(
+        cli(
+            knowledge,
+            root,
+            "database",
+            "history",
+            source_id,
+            "--json",
+            "-d",
+            str(database),
+        ).stdout
+    )
+    metadata = sqlite3.connect(database)
+    try:
+        after = tuple(
+            metadata.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            for table in ("sources", "documents", "knowledge_units", "database_schema_snapshots")
+        )
+    finally:
+        metadata.close()
+    require([item["version"] for item in history] == [1, 2], "capture history is incomplete")
+    require(after == before, "database schema list/history changed metadata rows")
 
 
 def verify_conversations(knowledge: Path, root: Path) -> None:
@@ -668,6 +809,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             checks.extend(("packaged_resources", "demo_timeline"))
             verify_plaintext_context(knowledge, root)
             checks.append("context_and_stale_filtering")
+            verify_database_schema(knowledge, root)
+            checks.append("database_schema_capture_history_diff")
             verify_conversations(knowledge, root)
             checks.append("conversation_review_audit")
             verify_demo_retrieval(database)

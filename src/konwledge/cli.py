@@ -57,6 +57,7 @@ from konwledge.lifecycle import (
     SourceNotFoundError,
     UnitState,
 )
+from konwledge.newcli_database_schema import database_app
 from konwledge.retrieval import RetrievalMode, RetrievalResult, RetrievalService
 from konwledge.snapshot import dump_schema, dump_snapshot
 from konwledge.storage import (
@@ -76,6 +77,7 @@ app = typer.Typer(
     no_args_is_help=False,
     pretty_exceptions_enable=False,
 )
+app.add_typer(database_app, name="database")
 
 AtOption = Annotated[
     str | None,

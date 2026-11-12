@@ -9,6 +9,7 @@ import pytest
 from scripts.installed_smoke import is_installed_location
 from scripts.verify_distribution import (
     API_MODULES,
+    DATABASE_SCHEMA_MODULES,
     Inspection,
     inspect_sdist,
     inspect_wheel,
@@ -21,8 +22,10 @@ RESOURCE = "konwledge/demo/corpus/demo.md"
 WHEEL_METADATA = (
     "Metadata-Version: 2.4\nName: konwledge\nVersion: 0.1.0\n"
     "Provides-Extra: api\n"
+    "Provides-Extra: postgres\n"
     'Requires-Dist: fastapi<1,>=0.115; extra == "api"\n'
     'Requires-Dist: uvicorn<1,>=0.30; extra == "api"\n'
+    'Requires-Dist: psycopg[binary]<4,>=3.2; extra == "postgres"\n'
 )
 SDIST_METADATA = WHEEL_METADATA
 ENTRY_POINTS = "[console_scripts]\nknowledge = konwledge.cli:main\nkonwledge = konwledge.cli:main\n"
@@ -36,6 +39,7 @@ def write_wheel(
         "konwledge/__main__.py": "",
         "konwledge/py.typed": "",
         **dict.fromkeys(API_MODULES, ""),
+        **dict.fromkeys(DATABASE_SCHEMA_MODULES, ""),
         RESOURCE: "demo",
         "konwledge-0.1.0.dist-info/METADATA": WHEEL_METADATA,
         "konwledge-0.1.0.dist-info/entry_points.txt": ENTRY_POINTS,
@@ -60,6 +64,7 @@ def write_sdist(
         f"{root}/src/konwledge/__init__.py": "",
         f"{root}/src/konwledge/py.typed": "",
         **dict.fromkeys((f"{root}/src/{module}" for module in API_MODULES), ""),
+        **dict.fromkeys((f"{root}/src/{module}" for module in DATABASE_SCHEMA_MODULES), ""),
         f"{root}/tests/test_source.py": "",
     }
     files.update(overrides or {})
@@ -106,7 +111,7 @@ def test_inspect_wheel_accepts_metadata_resources_and_both_entry_points(tmp_path
             "demo_resources",
             "runtime_exclusions",
         ),
-        file_count=10,
+        file_count=19,
     )
 
 
@@ -159,7 +164,7 @@ def test_inspect_sdist_allows_source_tests_with_narrow_warning(tmp_path: Path) -
     result = inspect_sdist(sdist, NAME, VERSION)
 
     assert result.format == "sdist"
-    assert result.file_count == 11
+    assert result.file_count == 20
     assert len(result.warnings) == 1
     assert "source tests" in result.warnings[0]
 
@@ -220,9 +225,9 @@ def test_inspection_rejects_nonoptional_api_dependencies(tmp_path: Path, depende
         inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))
 
 
-@pytest.mark.parametrize("module", API_MODULES)
-def test_inspection_requires_packaged_api_modules(tmp_path: Path, module: str) -> None:
-    wheel = tmp_path / "missing-api.whl"
+@pytest.mark.parametrize("module", (*API_MODULES, *DATABASE_SCHEMA_MODULES))
+def test_inspection_requires_packaged_runtime_modules(tmp_path: Path, module: str) -> None:
+    wheel = tmp_path / "missing-module.whl"
     write_wheel(wheel, omit=(module,))
     with pytest.raises(ValueError, match="missing packaged file"):
         inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))
@@ -239,4 +244,40 @@ def test_inspection_requires_api_extra(tmp_path: Path) -> None:
         },
     )
     with pytest.raises(ValueError, match="missing the api extra"):
+        inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))
+
+
+@pytest.mark.parametrize(
+    ("metadata", "message"),
+    [
+        (
+            WHEEL_METADATA + "Requires-Dist: psycopg[binary]>=3.2,<4\n",
+            "conditional on the postgres extra",
+        ),
+        (
+            WHEEL_METADATA.replace("psycopg[binary]<4,>=3.2", "psycopg[binary]<4,>=3.1"),
+            r"pin psycopg\[binary\]>=3\.2,<4",
+        ),
+        (
+            WHEEL_METADATA.replace("Provides-Extra: postgres\n", ""),
+            "missing the postgres extra",
+        ),
+        (
+            WHEEL_METADATA.replace(
+                'Requires-Dist: psycopg[binary]<4,>=3.2; extra == "postgres"\n', ""
+            ),
+            r"postgres extra must include psycopg\[binary\]",
+        ),
+    ],
+)
+def test_inspection_rejects_invalid_postgres_extra(
+    tmp_path: Path, metadata: str, message: str
+) -> None:
+    wheel = tmp_path / "invalid-postgres-extra.whl"
+    write_wheel(
+        wheel,
+        overrides={"konwledge-0.1.0.dist-info/METADATA": metadata},
+    )
+
+    with pytest.raises(ValueError, match=message):
         inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))

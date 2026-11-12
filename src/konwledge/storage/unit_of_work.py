@@ -13,6 +13,7 @@ from konwledge.storage.conversations import (
     ConversationReviewRepository,
 )
 from konwledge.storage.database import SessionFactory
+from konwledge.storage.database_schema import DatabaseSchemaSnapshotRepository
 from konwledge.storage.evaluation import EvaluationSetRepository
 from konwledge.storage.repository import (
     CitationRepository,
@@ -42,6 +43,7 @@ class UnitOfWork:
         self.conversation_candidates = ConversationCandidateRepository(self._session)
         self.conversation_reviews = ConversationReviewRepository(self._session)
         self.evaluation_sets = EvaluationSetRepository(self._session)
+        self.database_schema_snapshots = DatabaseSchemaSnapshotRepository(self._session)
         return self
 
     def __exit__(

@@ -62,7 +62,7 @@ jobs:
         run: |
           uv run knowledge evaluation gate examples/evaluation-baseline.json "$RUNNER_TEMP/evaluation-candidate.json" --policy examples/evaluation-gate.json --json > "$RUNNER_TEMP/evaluation-gate.json"
 
-      - name: Verify wheel and source distribution (core-only and api extra)
+      - name: Verify wheel and source distribution (core-only, api, and postgres extras)
         run: uv run python scripts/verify_distribution.py --output-dir "$RUNNER_TEMP/distribution"
 
       - name: Upload evaluation evidence
@@ -85,6 +85,47 @@ jobs:
             ${{ runner.temp }}/distribution/build/*.tar.gz
             ${{ runner.temp }}/distribution/*-smoke-summary.json
           if-no-files-found: ignore
+
+  postgres:
+    name: PostgreSQL ${{ matrix.postgres-version }} schema capture
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-version: ["16", "17"]
+
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres-version }}
+        env:
+          POSTGRES_USER: konwledge_test
+          POSTGRES_PASSWORD: konwledge_test
+          POSTGRES_DB: konwledge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U konwledge_test -d konwledge_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies with the PostgreSQL extra
+        run: uv sync --locked --dev --extra postgres
+
+      - name: Test PostgreSQL schema capture
+        env:
+          KNOWLEDGE_TEST_POSTGRES_DSN: postgresql+psycopg://konwledge_test:konwledge_test@127.0.0.1:5432/konwledge_test
+        run: uv run --no-sync pytest tests/test_database_schema_postgres.py
 
   web:
     name: Demo site

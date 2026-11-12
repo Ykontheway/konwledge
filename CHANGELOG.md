@@ -4,7 +4,16 @@ All notable changes to Konwledge are documented in this file.
 
 The project is in alpha. Minor releases may refine public and lower-level APIs as capabilities are added; v0.1.0 does not provide a complete backward-compatibility guarantee.
 
-## Unreleased — U18-U19
+## Unreleased — U18-U20
+
+### U20
+
+- 增加 SQLite 与 PostgreSQL schema-only 捕获。SQLite 使用 `mode=ro`、catalog authorizer、元数据 PRAGMA 和有界超时；PostgreSQL 使用 psycopg 3、只读 repeatable-read 事务及连接、statement、lock timeout。
+- 增加不可变 schema snapshot 历史、规范 JSON/hash、稳定表 lineage、当前结构检索物化和 schema diff。重复捕获未变化结构保持幂等，结构恢复会复用已有 document 并追加捕获版本。
+- 增加 `knowledge database capture-sqlite/capture-postgres/list/history/show/export/diff`。PostgreSQL DSN 只从 `--dsn-env` 指定的环境变量读取；CLI 不接受 DSN 值，失败诊断不回显凭据、用户名、原始 SQL 或驱动错误。
+- 增加可选 `[postgres]` 依赖，核心安装仍不需要 psycopg。CI 使用 PostgreSQL 16/17 服务和临时测试凭据运行专用集成测试，默认 quality job 不安装该驱动。
+- 扩展源码与隔离安装 smoke，覆盖合成 SQLite 增量捕获、业务行不泄漏、只读 list/history、schema diff，以及 API 对当前字段可检索、退役字段不可检索。
+- `SourceKind.DATABASE` 不进入 V1 snapshot 合同。V1 导出遇到数据库来源会明确失败，不修改 demo golden、JSON Schema、前端类型或现有前端。
 
 ### U19
 

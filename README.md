@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API 与隔离分发验证；U19（**Unreleased**）加入对话版本导入、确定性候选提取和人工终态审核。版本号仍为 `0.1.0`，本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。前端停留 V2，V3/V4 与部署继续暂停。
+> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API 与隔离分发验证；U19（**Unreleased**）加入对话版本导入、确定性候选提取和人工终态审核；U20（**Unreleased**）加入只读数据库 schema 捕获、不可变历史和 schema diff。版本号仍为 `0.1.0`，本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。前端停留 V2，V3/V4 与部署继续暂停。
 
 ## Implemented increments
 
@@ -29,8 +29,9 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U17 | 2026-11-11 | v0.1.0 metadata coherence, lazy root API, isolated wheel/sdist verification, and release/contributor/architecture documentation |
 | U18 | Unreleased | 可选 `[api]` 本机只读 HTTP、`serve` 安全启动、OpenAI/LangChain SDK 验收、可选依赖及隔离分发验证（无版本提升） |
 | U19 | Unreleased | 不可变对话版本、确定性候选提取、人工批准/拒绝审计，以及 conversation/candidate CLI（无版本提升） |
+| U20 | Unreleased | SQLite/PostgreSQL 只读 schema 捕获、不可变版本历史、检索物化、导出和 schema diff（无版本提升） |
 
-Each increment builds on the preceding implementation. This branch contains U01-U19, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend development and deployment are paused; V3/V4 and publication of a live page are not part of this release-readiness closure.
+Each increment builds on the preceding implementation. This branch contains U01-U20, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend development and deployment are paused; V3/V4 and publication of a live page are not part of this release-readiness closure.
 
 ## Why this project
 
@@ -127,6 +128,25 @@ knowledge search "深色模式" -d .konwledge/knowledge.db
 
 `conversation show --json`、导出、候选详情和数据库可能保留原始私密聊天。命令、完整 schema、默认 latest 版本规则和退出码见 [对话导入与人工审核](docs/conversations.md)。U19 不修改 U18 的只读 HTTP API，也不增加运行时依赖。
 
+## 数据库 schema 捕获（U20，Unreleased）
+
+SQLite 捕获使用核心安装，PostgreSQL 需要可选的 psycopg 3 驱动：
+
+```bash
+uv sync --locked --dev --extra postgres
+uv run knowledge database capture-sqlite source.sqlite \
+  --name "Local schema" --json -d .konwledge/knowledge.db
+
+export KNOWLEDGE_CAPTURE_DSN='postgresql+psycopg://capture_role:password@127.0.0.1:5432/app'
+uv run knowledge database capture-postgres \
+  --dsn-env KNOWLEDGE_CAPTURE_DSN --name "Application schema" \
+  --schema public --json -d .konwledge/knowledge.db
+```
+
+CLI 不接受直接传入 DSN，只读取 `--dsn-env` 指定的安全环境变量名。捕获先在元数据库之外完成；无效目标或失败连接不会新建 Knowledge Library 数据库。snapshot 只含 catalog 元数据，不含业务行，但注释、默认值、索引表达式和 DDL 片段仍可能敏感。
+
+`knowledge database list/history/show/export/diff` 用于查看不可变版本、导出规范 JSON 和比较 schema。结构不变时重复捕获保持当前版本；结构变化和恢复都会留下历史记录。完整命令、安全边界、最低权限建议及合成 SQLite 示例见 [数据库 schema 捕获](docs/database-schema.md)。`SourceKind.DATABASE` 尚未进入前端 V1 snapshot 合同，相关导出会明确失败，不修改既有 golden 和前端类型。
+
 ## Import CLI
 
 导入等已有 CLI 命令会自动创建 SQLite schema 与父目录；`serve` 例外，必须指向已有数据库文件。
@@ -187,6 +207,16 @@ uv sync --dev --extra lancedb
 uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 ```
 
+可选 PostgreSQL 捕获有独立 CI job，使用临时 dummy 凭据测试 PostgreSQL 16 和 17：
+
+```bash
+uv sync --locked --dev --extra postgres
+KNOWLEDGE_TEST_POSTGRES_DSN='postgresql+psycopg://konwledge_test:konwledge_test@127.0.0.1:5432/konwledge_test' \
+  uv run pytest tests/test_database_schema_postgres.py
+```
+
+默认核心与 dev 安装不依赖 psycopg。只有设置 `KNOWLEDGE_TEST_POSTGRES_DSN` 后，PostgreSQL 测试才会执行。
+
 ## Repository layout
 
 ```text
@@ -202,6 +232,7 @@ uv run pytest tests/test_indexing.py tests/test_lifecycle.py -k lance
 │   │   ├── evaluation.py
 │   │   └── models.py
 │   ├── conversations/       # 对话导入、确定性提取与人工终态审核（U19）
+│   ├── database_schema/     # schema-only 收集、规范模型、diff 与发布服务（U20）
 │   ├── embedding/
 │   │   ├── __init__.py
 │   │   ├── providers.py

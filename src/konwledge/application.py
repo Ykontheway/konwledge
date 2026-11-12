@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from konwledge.conflicts import ConflictService
 from konwledge.context import ContextPacket, ContextService
 from konwledge.conversations import ConversationService
+from konwledge.database_schema import DatabaseSchemaService
 from konwledge.domain import (
     Document,
     KnowledgeUnit,
@@ -196,6 +197,9 @@ class KnowledgeLibrary:
         self._freshness = FreshnessService(session_factory, id_factory=id_factory, clock=clock)
         self._conflicts = ConflictService(session_factory, id_factory=id_factory, clock=clock)
         self._conversations = ConversationService(session_factory, clock=clock)
+        self._database_schema = DatabaseSchemaService(
+            session_factory, id_factory=id_factory, clock=clock
+        )
         self._retrieval = RetrievalService(
             session_factory, indexing_service=indexing_service, clock=clock
         )
@@ -225,6 +229,12 @@ class KnowledgeLibrary:
         """Immutable conversation import, candidate queue, and terminal review."""
 
         return self._conversations
+
+    @property
+    def database_schema(self) -> DatabaseSchemaService:
+        """Read-only external schema capture with atomic local version publication."""
+
+        return self._database_schema
 
     @property
     def evaluation(self) -> EvaluationService:

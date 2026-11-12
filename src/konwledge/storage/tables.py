@@ -197,6 +197,28 @@ class EvaluationSetRow(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
 
+class DatabaseSchemaSnapshotRow(Base):
+    """One append-only schema capture; repeated historical content is allowed."""
+
+    __tablename__ = "database_schema_snapshots"
+    __table_args__ = (
+        CheckConstraint("version >= 1"),
+        CheckConstraint("length(content_hash) = 64"),
+        UniqueConstraint("source_id", "version"),
+    )
+
+    source_id: Mapped[UUID] = mapped_column(
+        ForeignKey("sources.id", ondelete="RESTRICT"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column("payload", JSON, nullable=False)
+    captured_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+
+
 class ConversationRow(Base):
     """One immutable imported conversation version."""
 

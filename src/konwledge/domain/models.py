@@ -30,6 +30,7 @@ class SourceKind(StrEnum):
     REPOSITORY = "repository"
     MANUAL = "manual"
     CONVERSATION = "conversation"
+    DATABASE = "database"
 
 
 class DocumentContentType(StrEnum):
@@ -104,6 +105,8 @@ class Source(KonwledgeModel):
             raise ValueError("URL sources must use an http or https URI")
         if self.kind is SourceKind.FILE and is_web_uri:
             raise ValueError("file sources must use a local file URI or path")
+        if self.kind is SourceKind.DATABASE and not self.uri.startswith("database://"):
+            raise ValueError("database sources must use a sanitized database:// URI")
         return self
 
 
