@@ -135,7 +135,7 @@ def render_context(blocks: Sequence[EvidenceBlock]) -> str:
 
 
 class ContextPacket(_ContextModel):
-    """A bounded, self-validating context rendering from one retrieval snapshot."""
+    """A character-bounded context rendering from one retrieval snapshot."""
 
     query: str = Field(strict=True, min_length=1)
     mode: RetrievalMode
@@ -210,3 +210,24 @@ class ContextPacket(_ContextModel):
         """Whether vector retrieval reported any eligible units without vectors."""
 
         return bool(self.missing_vector_ids)
+
+
+class TokenContextPacket(ContextPacket):
+    """A context packet additionally bounded by an exact token counter."""
+
+    max_tokens: int = Field(strict=True, ge=0)
+    used_tokens: int = Field(strict=True, ge=0)
+    token_encoding: str = Field(strict=True, min_length=1)
+
+    @field_validator("token_encoding")
+    @classmethod
+    def validate_token_encoding(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("token_encoding must be a non-empty string")
+        return value
+
+    @model_validator(mode="after")
+    def validate_token_budget(self) -> Self:
+        if self.used_tokens > self.max_tokens:
+            raise ValueError("used_tokens exceeds max_tokens")
+        return self

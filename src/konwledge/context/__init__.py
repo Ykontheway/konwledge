@@ -12,9 +12,11 @@ from konwledge.context.models import (
     ContextSkipReason,
     EvidenceBlock,
     SkippedEvidence,
+    TokenContextPacket,
     render_context,
 )
 from konwledge.context.service import ContextService
+from konwledge.context.tokens import TiktokenTokenCounter, TokenCounter
 
 __all__ = [
     "CitationEvidenceError",
@@ -23,6 +25,9 @@ __all__ = [
     "ContextSkipReason",
     "EvidenceBlock",
     "SkippedEvidence",
+    "TiktokenTokenCounter",
+    "TokenContextPacket",
+    "TokenCounter",
     "assemble_context",
     "citation_from_hit",
     "render_context",

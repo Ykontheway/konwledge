@@ -4,7 +4,7 @@ This document is a maintainer checklist. It separates a release-ready source tre
 
 ## Current v0.1.0 state
 
-As of 2026-11-12, v0.1.0 is prepared as an alpha release candidate in source metadata. U18, U19, and U20 remain Unreleased additions and do not change the version. This work does not merge `main`, create a pull request, tag a commit, create a GitHub Release, publish to PyPI, or deploy/verify a public site. Local artifacts produced during verification are not a published release.
+As of 2026-11-12, v0.1.0 is prepared as an alpha release candidate in source metadata. U14–U16 acceptance, automatic knowledge-change evaluation, and U18–U20 remain Unreleased additions and do not change the version. This work does not merge `main`, create a pull request, tag a commit, create a GitHub Release, publish to PyPI, or deploy/verify a public site. Local artifacts produced during verification are not a published release.
 
 No installation instructions should claim that `konwledge==0.1.0` is available from PyPI until the package index confirms it.
 

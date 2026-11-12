@@ -9,7 +9,10 @@ import pytest
 from scripts.installed_smoke import is_installed_location
 from scripts.verify_distribution import (
     API_MODULES,
+    AUTO_EVALUATION_MODULES,
     DATABASE_SCHEMA_MODULES,
+    QUALITY_MODULES,
+    TOKEN_MODULES,
     Inspection,
     inspect_sdist,
     inspect_wheel,
@@ -23,9 +26,11 @@ WHEEL_METADATA = (
     "Metadata-Version: 2.4\nName: konwledge\nVersion: 0.1.0\n"
     "Provides-Extra: api\n"
     "Provides-Extra: postgres\n"
+    "Provides-Extra: tokens\n"
     'Requires-Dist: fastapi<1,>=0.115; extra == "api"\n'
     'Requires-Dist: uvicorn<1,>=0.30; extra == "api"\n'
     'Requires-Dist: psycopg[binary]<4,>=3.2; extra == "postgres"\n'
+    'Requires-Dist: tiktoken<1,>=0.12; extra == "tokens"\n'
 )
 SDIST_METADATA = WHEEL_METADATA
 ENTRY_POINTS = "[console_scripts]\nknowledge = konwledge.cli:main\nkonwledge = konwledge.cli:main\n"
@@ -40,6 +45,9 @@ def write_wheel(
         "konwledge/py.typed": "",
         **dict.fromkeys(API_MODULES, ""),
         **dict.fromkeys(DATABASE_SCHEMA_MODULES, ""),
+        **dict.fromkeys(QUALITY_MODULES, ""),
+        **dict.fromkeys(AUTO_EVALUATION_MODULES, ""),
+        **dict.fromkeys(TOKEN_MODULES, ""),
         RESOURCE: "demo",
         "konwledge-0.1.0.dist-info/METADATA": WHEEL_METADATA,
         "konwledge-0.1.0.dist-info/entry_points.txt": ENTRY_POINTS,
@@ -65,6 +73,9 @@ def write_sdist(
         f"{root}/src/konwledge/py.typed": "",
         **dict.fromkeys((f"{root}/src/{module}" for module in API_MODULES), ""),
         **dict.fromkeys((f"{root}/src/{module}" for module in DATABASE_SCHEMA_MODULES), ""),
+        **dict.fromkeys((f"{root}/src/{module}" for module in QUALITY_MODULES), ""),
+        **dict.fromkeys((f"{root}/src/{module}" for module in AUTO_EVALUATION_MODULES), ""),
+        **dict.fromkeys((f"{root}/src/{module}" for module in TOKEN_MODULES), ""),
         f"{root}/tests/test_source.py": "",
     }
     files.update(overrides or {})
@@ -111,7 +122,7 @@ def test_inspect_wheel_accepts_metadata_resources_and_both_entry_points(tmp_path
             "demo_resources",
             "runtime_exclusions",
         ),
-        file_count=19,
+        file_count=31,
     )
 
 
@@ -164,7 +175,7 @@ def test_inspect_sdist_allows_source_tests_with_narrow_warning(tmp_path: Path) -
     result = inspect_sdist(sdist, NAME, VERSION)
 
     assert result.format == "sdist"
-    assert result.file_count == 20
+    assert result.file_count == 32
     assert len(result.warnings) == 1
     assert "source tests" in result.warnings[0]
 
@@ -225,7 +236,16 @@ def test_inspection_rejects_nonoptional_api_dependencies(tmp_path: Path, depende
         inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))
 
 
-@pytest.mark.parametrize("module", (*API_MODULES, *DATABASE_SCHEMA_MODULES))
+@pytest.mark.parametrize(
+    "module",
+    (
+        *API_MODULES,
+        *DATABASE_SCHEMA_MODULES,
+        *QUALITY_MODULES,
+        *AUTO_EVALUATION_MODULES,
+        *TOKEN_MODULES,
+    ),
+)
 def test_inspection_requires_packaged_runtime_modules(tmp_path: Path, module: str) -> None:
     wheel = tmp_path / "missing-module.whl"
     write_wheel(wheel, omit=(module,))
@@ -274,6 +294,63 @@ def test_inspection_rejects_invalid_postgres_extra(
     tmp_path: Path, metadata: str, message: str
 ) -> None:
     wheel = tmp_path / "invalid-postgres-extra.whl"
+    write_wheel(
+        wheel,
+        overrides={"konwledge-0.1.0.dist-info/METADATA": metadata},
+    )
+
+    with pytest.raises(ValueError, match=message):
+        inspect_wheel(wheel, NAME, VERSION, (RESOURCE,))
+
+
+@pytest.mark.parametrize(
+    "module",
+    (
+        *QUALITY_MODULES,
+        *AUTO_EVALUATION_MODULES,
+        *TOKEN_MODULES,
+    ),
+)
+def test_sdist_inspection_requires_new_runtime_modules(tmp_path: Path, module: str) -> None:
+    sdist = tmp_path / "missing-new-module.tar.gz"
+    write_sdist(sdist, omit=(f"konwledge-0.1.0/src/{module}",))
+
+    with pytest.raises(ValueError, match="missing source file"):
+        inspect_sdist(sdist, NAME, VERSION)
+
+
+@pytest.mark.parametrize(
+    ("metadata", "message"),
+    [
+        (
+            WHEEL_METADATA.replace("Provides-Extra: tokens\n", ""),
+            "missing the tokens extra",
+        ),
+        (
+            WHEEL_METADATA.replace(
+                'Requires-Dist: tiktoken<1,>=0.12; extra == "tokens"\n',
+                "Requires-Dist: tiktoken<1,>=0.12\n",
+            ),
+            "conditional on the tokens extra",
+        ),
+        (
+            WHEEL_METADATA.replace("tiktoken<1,>=0.12", "tiktoken<1,>=0.11"),
+            "tokens extra must pin tiktoken>=0.12,<1",
+        ),
+        (
+            WHEEL_METADATA.replace("tiktoken<1,>=0.12", "tiktoken<2,>=0.12"),
+            "tokens extra must pin tiktoken>=0.12,<1",
+        ),
+        (
+            WHEEL_METADATA.replace('Requires-Dist: tiktoken<1,>=0.12; extra == "tokens"\n', ""),
+            "tokens extra must include tiktoken>=0.12,<1",
+        ),
+    ],
+)
+def test_inspection_rejects_invalid_tokens_extra(
+    tmp_path: Path, metadata: str, message: str
+) -> None:
+    wheel = tmp_path / "invalid-tokens-extra.whl"
     write_wheel(
         wheel,
         overrides={"konwledge-0.1.0.dist-info/METADATA": metadata},

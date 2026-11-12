@@ -156,14 +156,12 @@ def _validate_sqlite_target(target: Path, database: Path) -> Path:
 
 @contextmanager
 def _open_library(database: Path) -> Iterator[KnowledgeLibrary]:
-    database_path = database.expanduser().resolve(strict=False)
-    database_path.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_sqlite_engine(f"sqlite+pysqlite:///{database_path.as_posix()}")
-    try:
-        create_schema(engine)
-        yield KnowledgeLibrary(create_session_factory(engine))
-    finally:
-        engine.dispose()
+    # Use the shared observer/exit adapter without exposing collector errors or
+    # changing capture JSON. The delayed import avoids CLI registration cycles.
+    from konwledge.cli import _open_scoped_library
+
+    with _open_scoped_library(database) as library:
+        yield library
 
 
 class _CapturedCollector(SchemaCollector):

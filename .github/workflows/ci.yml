@@ -62,8 +62,19 @@ jobs:
         run: |
           uv run knowledge evaluation gate examples/evaluation-baseline.json "$RUNNER_TEMP/evaluation-candidate.json" --policy examples/evaluation-gate.json --json > "$RUNNER_TEMP/evaluation-gate.json"
 
-      - name: Verify wheel and source distribution (core-only, api, and postgres extras)
+      - name: Run quality acceptance (30 cases, 1,000 active units, P95 <= 1.5s)
+        run: uv run python scripts/quality_acceptance.py --report "$RUNNER_TEMP/quality-acceptance.json"
+
+      - name: Verify wheel and source distribution (core-only, quality, api, postgres, and tokens)
         run: uv run python scripts/verify_distribution.py --output-dir "$RUNNER_TEMP/distribution"
+
+      - name: Upload quality acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-acceptance-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/quality-acceptance.json
+          if-no-files-found: ignore
 
       - name: Upload evaluation evidence
         if: always()

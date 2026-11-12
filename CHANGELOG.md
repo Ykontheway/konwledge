@@ -4,7 +4,16 @@ All notable changes to Konwledge are documented in this file.
 
 The project is in alpha. Minor releases may refine public and lower-level APIs as capabilities are added; v0.1.0 does not provide a complete backward-compatibility guarantee.
 
-## Unreleased — U18-U20
+## Unreleased — U14-U16 acceptance and U18-U20
+
+### 后端验收与自动评测
+
+- U14 增加可选 `[tokens]` 与真实 tiktoken 预算，覆盖完整 context rendering；保留默认字符预算、ContextPacket JSON 和冻结 Demo 不变。
+- U15 新增独立 30 条公开基准，通过真实 lifecycle 发布、历史版本和过期干扰验证检索；不替换 6 条 Demo 或人工基线。
+- U16 增加 TopK 5、Recall ≥ 0.80、MRR ≥ 0.65、引用覆盖 100%、过期命中 0 和无答案准确率门禁；新增 1,000 active 单元、30 次采样的 P95 ≤ 1.5 秒本机性能验收。
+- 增加默认关闭的 `auto-evaluation`。启用后在知识变更事务中持久化任务，提交后同步评测；固定数据集版本/hash 与知识指纹，保留安全错误码、租约恢复和重试审计，不自动更新基线或回滚已提交知识。
+- CLI 新增 `quality` 与 `auto-evaluation`，知识变更评测未通过时保留普通／JSON stdout，在 stderr 提示并退出 `3`。扩展 wheel/sdist 独立安装 smoke、真实 tokenizer 验收与 CI 证据。
+- 本次不改变 v0.1.0 身份、U18 HTTP 请求协议或 Snapshot V1，不包含 MCP、前端、正式发布或部署。
 
 ### U20
 

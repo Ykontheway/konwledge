@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 from collections.abc import Iterator, Sequence
+from contextvars import ContextVar
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -20,7 +21,9 @@ from pydantic import ValidationError
 
 from konwledge import __version__
 from konwledge.application import ImportPathError, KnowledgeLibrary, KnowledgeUnitNotFoundError
-from konwledge.context import assemble_context, validate_budget
+from konwledge.auto_evaluation.notifications import notify_cli
+from konwledge.context import TokenContextPacket, assemble_context, validate_budget
+from konwledge.context.tokens import resolve_token_counter
 from konwledge.conversations import (
     CandidateNotFoundError,
     CandidateStateError,
@@ -57,7 +60,9 @@ from konwledge.lifecycle import (
     SourceNotFoundError,
     UnitState,
 )
+from konwledge.newcli_auto_evaluation import auto_evaluation_app
 from konwledge.newcli_database_schema import database_app
+from konwledge.newcli_quality import quality_app
 from konwledge.retrieval import RetrievalMode, RetrievalResult, RetrievalService
 from konwledge.snapshot import dump_schema, dump_snapshot
 from konwledge.storage import (
@@ -68,6 +73,7 @@ from konwledge.storage import (
 )
 
 DEFAULT_DATABASE = Path(".konwledge/knowledge.db")
+_CLI_CONTEXT: ContextVar[typer.Context | None] = ContextVar("konwledge_cli_context", default=None)
 
 app = typer.Typer(
     name="knowledge",
@@ -78,6 +84,8 @@ app = typer.Typer(
     pretty_exceptions_enable=False,
 )
 app.add_typer(database_app, name="database")
+app.add_typer(auto_evaluation_app, name="auto-evaluation")
+app.add_typer(quality_app, name="quality")
 
 AtOption = Annotated[
     str | None,
@@ -121,16 +129,27 @@ def root(
 ) -> None:
     """Import and inspect traceable local knowledge."""
 
+    token = _CLI_CONTEXT.set(ctx)
+    ctx.call_on_close(lambda: _CLI_CONTEXT.reset(token))
     if ctx.invoked_subcommand is None and not version:
         typer.echo(ctx.get_help())
 
 
 def _open_library(database: Path) -> KnowledgeLibrary:
+    # Existing CLI handlers share the scoped path; Click closes its resource after
+    # rendering stdout, so a post-commit exit 3 cannot swallow a JSON result.
+    context = _CLI_CONTEXT.get()
+    if context is not None:
+        return context.with_resource(_open_scoped_library(database))
     database_path = database.expanduser().resolve()
     database_path.parent.mkdir(parents=True, exist_ok=True)
     engine = create_sqlite_engine(f"sqlite+pysqlite:///{database_path.as_posix()}")
     create_schema(engine)
     return KnowledgeLibrary(create_session_factory(engine))
+
+
+def _automatic_evaluation_exit() -> NoReturn:
+    raise typer.Exit(code=3)
 
 
 @contextlib.contextmanager
@@ -142,7 +161,18 @@ def _open_scoped_library(database: Path) -> Iterator[KnowledgeLibrary]:
     engine = create_sqlite_engine(f"sqlite+pysqlite:///{database_path.as_posix()}")
     try:
         create_schema(engine)
-        yield KnowledgeLibrary(create_session_factory(engine))
+        library = KnowledgeLibrary(create_session_factory(engine))
+        with library.automatic_evaluation.observe_changes() as observed:
+            yield library
+            unsuccessful = notify_cli(
+                observed.jobs, stderr=lambda message: typer.echo(message, err=True)
+            )
+            if unsuccessful:
+                context = _CLI_CONTEXT.get()
+                if context is None:
+                    _automatic_evaluation_exit()
+                # Defer until the handler has emitted its ordinary/JSON result.
+                context.call_on_close(_automatic_evaluation_exit)
     finally:
         engine.dispose()
 
@@ -922,6 +952,12 @@ def context_command(
     max_units: Annotated[
         int, typer.Option("--max-units", min=1, help="Maximum evidence units.")
     ] = 10,
+    max_tokens: Annotated[
+        int | None, typer.Option("--max-tokens", min=0, help="Exact rendered-context token budget.")
+    ] = None,
+    token_encoding: Annotated[
+        str, typer.Option("--token-encoding", help="tiktoken encoding; requires konwledge[tokens].")
+    ] = "cl100k_base",
     json_output: Annotated[
         bool, typer.Option("--json", help="Output the complete context packet as JSON.")
     ] = False,
@@ -931,8 +967,13 @@ def context_command(
 
     try:
         validate_budget(max_chars, max_units)
-    except ValueError as error:
+        counter = resolve_token_counter(
+            max_tokens=max_tokens, token_encoding=token_encoding, token_counter=None
+        )
+    except (ValueError, ImportError) as error:
         _fail(str(error), code=2)
+    except Exception:
+        _fail("could not initialize token encoding; check its local cache", code=2)
     result = _perform_retrieval(
         query=query,
         mode=mode,
@@ -946,7 +987,14 @@ def context_command(
         database=database,
     )
     try:
-        packet = assemble_context(result, max_chars=max_chars, max_units=max_units)
+        packet = assemble_context(
+            result,
+            max_chars=max_chars,
+            max_units=max_units,
+            max_tokens=max_tokens,
+            token_encoding=token_encoding,
+            token_counter=counter,
+        )
     except ValueError as error:
         _fail(str(error), code=2)
 
@@ -959,6 +1007,10 @@ def context_command(
         f"skipped={len(packet.skipped)} used_chars={packet.used_chars}/{packet.max_chars} "
         f"at={packet.evaluated_at.isoformat()} degraded={str(packet.degraded).lower()}"
     )
+    if isinstance(packet, TokenContextPacket):
+        typer.echo(
+            f"Tokens: {packet.used_tokens}/{packet.max_tokens} encoding={packet.token_encoding}"
+        )
     if packet.context_text:
         typer.echo(packet.context_text, nl=not packet.context_text.endswith("\n"))
     elif result.hits:

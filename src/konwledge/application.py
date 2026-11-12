@@ -10,8 +10,9 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
 
+from konwledge.auto_evaluation import AutoEvaluationService
 from konwledge.conflicts import ConflictService
-from konwledge.context import ContextPacket, ContextService
+from konwledge.context import ContextPacket, ContextService, TokenCounter
 from konwledge.conversations import ConversationService
 from konwledge.database_schema import DatabaseSchemaService
 from konwledge.domain import (
@@ -39,6 +40,7 @@ from konwledge.lifecycle import (
     LifecycleService,
     UnitState,
 )
+from konwledge.quality import QualityService
 from konwledge.retrieval import RetrievalMode, RetrievalResult, RetrievalService
 from konwledge.storage import SessionFactory, UnitOfWork
 
@@ -204,6 +206,8 @@ class KnowledgeLibrary:
             session_factory, indexing_service=indexing_service, clock=clock
         )
         self._evaluation = EvaluationService(session_factory, self._retrieval, clock=self._clock)
+        self._quality = QualityService(session_factory, self._retrieval, clock=self._clock)
+        self._automatic_evaluation = AutoEvaluationService(session_factory, clock=self._clock)
         self._context = ContextService(self._retrieval)
 
     @property
@@ -241,6 +245,18 @@ class KnowledgeLibrary:
         """Immutable evaluation datasets and read-only retrieval scoring."""
 
         return self._evaluation
+
+    @property
+    def quality(self) -> QualityService:
+        """Absolute retrieval quality checks with optional baseline regression."""
+
+        return self._quality
+
+    @property
+    def automatic_evaluation(self) -> AutoEvaluationService:
+        """Crash-safe quality checks after committed knowledge changes."""
+
+        return self._automatic_evaluation
 
     @property
     def retrieval(self) -> RetrievalService:
@@ -292,6 +308,9 @@ class KnowledgeLibrary:
         source_id: UUID | None = None,
         max_chars: int = 8000,
         max_units: int = 10,
+        max_tokens: int | None = None,
+        token_encoding: str = "cl100k_base",
+        token_counter: TokenCounter | None = None,
     ) -> ContextPacket:
         """Retrieve once and assemble whole, source-backed evidence without writes."""
 
@@ -306,6 +325,9 @@ class KnowledgeLibrary:
             source_id=source_id,
             max_chars=max_chars,
             max_units=max_units,
+            max_tokens=max_tokens,
+            token_encoding=token_encoding,
+            token_counter=token_counter,
         )
 
     def publishable_units(

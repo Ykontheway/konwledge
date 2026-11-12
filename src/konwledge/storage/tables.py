@@ -197,6 +197,70 @@ class EvaluationSetRow(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
 
+class AutoEvaluationConfigRow(Base):
+    """Singleton, explicitly enabled automatic quality configuration."""
+
+    __tablename__ = "auto_evaluation_config"
+    __table_args__ = (
+        CheckConstraint("id = 1"),
+        CheckConstraint("generation >= 1"),
+        CheckConstraint("dataset_version >= 1"),
+        CheckConstraint("length(dataset_hash) = 64"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    enabled: Mapped[int] = mapped_column(Integer, nullable=False)
+    dataset_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    dataset_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    dataset_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class AutoEvaluationJobRow(Base):
+    """Durable outbox item and privacy-bounded execution audit."""
+
+    __tablename__ = "auto_evaluation_jobs"
+    __table_args__ = (
+        CheckConstraint("config_generation >= 1"),
+        CheckConstraint("dataset_version >= 1"),
+        CheckConstraint("length(config_fingerprint) = 64"),
+        CheckConstraint("length(dataset_hash) = 64"),
+        CheckConstraint("length(knowledge_fingerprint) = 64"),
+        Index("ix_auto_evaluation_jobs_queue", "status", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    parent_job_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auto_evaluation_jobs.id", ondelete="RESTRICT"), index=True
+    )
+    trigger_key: Mapped[str | None] = mapped_column(String(129), unique=True)
+    config_generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    dataset_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    dataset_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    dataset_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    knowledge_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    trigger_revision_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    evaluated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    started_at: Mapped[str | None] = mapped_column(String(40))
+    finished_at: Mapped[str | None] = mapped_column(String(40))
+    lease_token: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    lease_expires_at: Mapped[str | None] = mapped_column(String(40))
+    report: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    recovery_errors: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+
+
 class DatabaseSchemaSnapshotRow(Base):
     """One append-only schema capture; repeated historical content is allowed."""
 

@@ -656,6 +656,9 @@ lancedb = [
 postgres = [
     { name = "psycopg", extra = ["binary"] },
 ]
+tokens = [
+    { name = "tiktoken" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -668,6 +671,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "tiktoken" },
     { name = "types-jsonschema" },
     { name = "uvicorn" },
 ]
@@ -681,10 +685,11 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'lancedb'", specifier = ">=16" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "sqlalchemy", specifier = ">=2.0,<3" },
+    { name = "tiktoken", marker = "extra == 'tokens'", specifier = ">=0.12,<1" },
     { name = "typer", specifier = ">=0.12,<1" },
     { name = "uvicorn", marker = "extra == 'api'", specifier = ">=0.30,<1" },
 ]
-provides-extras = ["api", "lancedb", "postgres"]
+provides-extras = ["api", "lancedb", "postgres", "tokens"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -697,6 +702,7 @@ dev = [
     { name = "pytest", specifier = ">=8.4.2,<9" },
     { name = "pytest-cov", specifier = ">=7.0.0,<8" },
     { name = "ruff", specifier = ">=0.14.0,<1" },
+    { name = "tiktoken", specifier = ">=0.12,<1" },
     { name = "types-jsonschema", specifier = ">=4.26.0.20261006" },
     { name = "uvicorn", specifier = ">=0.30,<1" },
 ]

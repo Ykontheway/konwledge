@@ -23,9 +23,27 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = PROJECT_ROOT / "pyproject.toml"
 SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_smoke.py"
+ACCEPTANCE_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_acceptance_smoke.py"
+TOKENS_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_tokens_smoke.py"
 API_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_api_smoke.py"
 POSTGRES_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_postgres_smoke.py"
 API_MODULES = tuple(f"konwledge/api/{name}.py" for name in ("__init__", "app", "models", "server"))
+QUALITY_MODULES = (
+    "konwledge/quality/__init__.py",
+    "konwledge/quality/models.py",
+    "konwledge/quality/service.py",
+    "konwledge/quality/acceptance.py",
+    "konwledge/quality/benchmark_corpus.py",
+    "konwledge/newcli_quality.py",
+)
+AUTO_EVALUATION_MODULES = (
+    "konwledge/auto_evaluation/__init__.py",
+    "konwledge/auto_evaluation/models.py",
+    "konwledge/auto_evaluation/service.py",
+    "konwledge/newcli_auto_evaluation.py",
+    "konwledge/storage/auto_evaluation.py",
+)
+TOKEN_MODULES = ("konwledge/context/tokens.py",)
 DATABASE_SCHEMA_MODULES = (
     "konwledge/database_schema/__init__.py",
     "konwledge/database_schema/collector.py",
@@ -134,12 +152,13 @@ def _metadata_identity(text: str, expected_name: str, expected_version: str) -> 
     if actual_version != expected_version:
         raise ValueError(f"distribution version mismatch: {actual_version!r}")
     extras = set(metadata.get_all("Provides-Extra", []))
-    for extra in ("api", "postgres"):
+    for extra in ("api", "postgres", "tokens"):
         if extra not in extras:
             raise ValueError(f"distribution is missing the {extra} extra")
     requirements = metadata.get_all("Requires-Dist", [])
     api_dependencies: set[str] = set()
     postgres_dependencies: set[str] = set()
+    token_dependencies: set[str] = set()
     for requirement in requirements:
         dependency = canonicalize_name(re.split(r"[\s<>=!~;\[]", requirement, maxsplit=1)[0])
         if dependency in {"openai", "langchain-openai", "httpx"}:
@@ -148,6 +167,14 @@ def _metadata_identity(text: str, expected_name: str, expected_version: str) -> 
             if not re.search(r"extra\s*==\s*['\"]api['\"]", requirement):
                 raise ValueError("API dependencies must be conditional on the api extra")
             api_dependencies.add(dependency)
+        if dependency == "tiktoken":
+            if not re.search(r"extra\s*==\s*['\"]tokens['\"]", requirement):
+                raise ValueError("tiktoken must be conditional on the tokens extra")
+            package_part = requirement.split(";", maxsplit=1)[0]
+            specifiers = set(re.findall(r"(===|==|!=|~=|<=|>=|<|>)\s*([^\s,;]+)", package_part))
+            if specifiers != {(">=", "0.12"), ("<", "1")}:
+                raise ValueError("tokens extra must pin tiktoken>=0.12,<1")
+            token_dependencies.add(dependency)
         if dependency == "psycopg":
             if not re.search(r"extra\s*==\s*['\"]postgres['\"]", requirement):
                 raise ValueError("psycopg must be conditional on the postgres extra")
@@ -166,6 +193,8 @@ def _metadata_identity(text: str, expected_name: str, expected_version: str) -> 
         raise ValueError("api extra must include FastAPI and Uvicorn")
     if postgres_dependencies != {"psycopg"}:
         raise ValueError("postgres extra must include psycopg[binary]")
+    if token_dependencies != {"tiktoken"}:
+        raise ValueError("tokens extra must include tiktoken>=0.12,<1")
 
 
 def inspect_wheel(
@@ -206,6 +235,9 @@ def inspect_wheel(
         "konwledge/py.typed",
         *API_MODULES,
         *DATABASE_SCHEMA_MODULES,
+        *QUALITY_MODULES,
+        *AUTO_EVALUATION_MODULES,
+        *TOKEN_MODULES,
         *expected_resources,
     }
     missing = sorted(required.difference(names))
@@ -254,6 +286,9 @@ def inspect_sdist(
             f"{root}/src/konwledge/py.typed",
             *(f"{root}/src/{module}" for module in API_MODULES),
             *(f"{root}/src/{module}" for module in DATABASE_SCHEMA_MODULES),
+            *(f"{root}/src/{module}" for module in QUALITY_MODULES),
+            *(f"{root}/src/{module}" for module in AUTO_EVALUATION_MODULES),
+            *(f"{root}/src/{module}" for module in TOKEN_MODULES),
             *(
                 f"{root}/src/{resource}"
                 for resource in expected_resources
@@ -308,11 +343,15 @@ def _run(
     *,
     cwd: Path,
     timeout: int = 600,
+    environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    run_environment = _sanitized_environment()
+    if environment is not None:
+        run_environment.update(environment)
     result = subprocess.run(
         list(command),
         cwd=cwd,
-        env=_sanitized_environment(),
+        env=run_environment,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -351,6 +390,7 @@ def _smoke_install(
     version: str,
     scratch: Path,
     fixtures: Path,
+    tiktoken_cache: Path,
 ) -> dict[str, Any]:
     venv = scratch / f"{distribution_format}-venv"
     _run([uv, "venv", "--python", target_python, str(venv)], cwd=scratch)
@@ -364,7 +404,9 @@ def _smoke_install(
             (
                 "import importlib.util; "
                 "assert importlib.util.find_spec('psycopg') is None, "
-                "'core install leaked postgres extra'"
+                "'core install leaked postgres extra'; "
+                "assert importlib.util.find_spec('tiktoken') is None, "
+                "'core install leaked tokens extra'"
             ),
         ],
         cwd=scratch,
@@ -393,6 +435,24 @@ def _smoke_install(
         raise RuntimeError(f"installed smoke did not emit valid JSON: {result.stdout!r}") from error
     if not isinstance(summary, dict):
         raise RuntimeError("installed smoke summary must be a JSON object")
+
+    acceptance_script = run_dir / ACCEPTANCE_SMOKE_SCRIPT.name
+    shutil.copyfile(ACCEPTANCE_SMOKE_SCRIPT, acceptance_script)
+    acceptance_result = _run(
+        [str(python), "-I", str(acceptance_script), "--expected-version", version],
+        cwd=run_dir,
+        timeout=900,
+    )
+    try:
+        acceptance_summary = json.loads(acceptance_result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"installed acceptance smoke did not emit valid JSON: {acceptance_result.stdout!r}"
+        ) from error
+    if not isinstance(acceptance_summary, dict) or acceptance_summary.get("passed") is not True:
+        raise RuntimeError("installed acceptance smoke summary must be a passing JSON object")
+    summary["quality_acceptance"] = acceptance_summary
+
     # 先证明 core-only 无可选依赖，再在同一隔离环境安装 [api]；不安装 HTTPX/SDK。
     _run([uv, "pip", "install", "--python", str(python), f"{artifact}[api]"], cwd=scratch)
     api_smoke_script = run_dir / API_SMOKE_SCRIPT.name
@@ -404,6 +464,32 @@ def _smoke_install(
     if not isinstance(api_summary, dict):
         raise RuntimeError("installed API smoke summary must be a JSON object")
     summary["api_extra"] = api_summary
+
+    tokens_venv = scratch / f"{distribution_format}-tokens-venv"
+    _run([uv, "venv", "--python", target_python, str(tokens_venv)], cwd=scratch)
+    tokens_python = _venv_python(tokens_venv)
+    _run(
+        [uv, "pip", "install", "--python", str(tokens_python), f"{artifact}[tokens]"],
+        cwd=scratch,
+    )
+    tokens_smoke_script = run_dir / TOKENS_SMOKE_SCRIPT.name
+    shutil.copyfile(TOKENS_SMOKE_SCRIPT, tokens_smoke_script)
+    tiktoken_cache.mkdir(parents=True, exist_ok=True)
+    tokens_result = _run(
+        [str(tokens_python), "-I", str(tokens_smoke_script), "--expected-version", version],
+        cwd=run_dir,
+        timeout=600,
+        environment={"TIKTOKEN_CACHE_DIR": str(tiktoken_cache)},
+    )
+    try:
+        tokens_summary = json.loads(tokens_result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"installed tokens smoke did not emit valid JSON: {tokens_result.stdout!r}"
+        ) from error
+    if not isinstance(tokens_summary, dict):
+        raise RuntimeError("installed tokens smoke summary must be a JSON object")
+    summary["tokens_extra"] = tokens_summary
 
     postgres_venv = scratch / f"{distribution_format}-postgres-venv"
     _run([uv, "venv", "--python", target_python, str(postgres_venv)], cwd=scratch)
@@ -473,6 +559,7 @@ def verify(output_dir: Path, target_python: str) -> tuple[Path, Path, tuple[Path
         scratch = Path(temporary)
         fixtures = scratch / "fixtures"
         fixtures.mkdir()
+        tiktoken_cache = scratch / "tiktoken-cache"
         for fixture_name in FIXTURE_NAMES:
             shutil.copyfile(PROJECT_ROOT / "examples" / fixture_name, fixtures / fixture_name)
         for artifact, distribution_format in ((wheel, "wheel"), (sdist, "sdist")):
@@ -484,6 +571,7 @@ def verify(output_dir: Path, target_python: str) -> tuple[Path, Path, tuple[Path
                 version=version,
                 scratch=scratch,
                 fixtures=fixtures,
+                tiktoken_cache=tiktoken_cache,
             )
             summary_path = output_dir / f"{distribution_format}-smoke-summary.json"
             summary_path.write_text(

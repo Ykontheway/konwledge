@@ -102,6 +102,12 @@ uv run knowledge evaluation gate examples/evaluation-baseline.json candidate.jso
 
 A passing gate exits `0`; a valid regression exits `3`. Invalid input exits `2`, and runtime or file I/O failures exit `1`. In the packaged story, the active guide uses port `8080`; the FAQ's `8000` answer is stale and excluded by default. Baseline replacement is an intentional review action, never an automatic CI side effect. The packaged hash embedding provider and demo vectors exercise plumbing only; they are not semantic-quality or production-performance evidence.
 
+## 后端验收与自动评测（Unreleased）
+
+U14 增加真实 Token 预算；U15 保留原 6 条 Demo，另建 30 条独立用例；U16 增加默认质量门槛和 1,000 active 单元的 P95 性能验收。运行 `uv run knowledge quality acceptance` 即可检查，不修改业务库或人工基线。详见 [后端验收](docs/acceptance.md)。
+
+业务知识变更自动评测默认关闭。导入自己的评测集后，用 `knowledge auto-evaluation enable --set-id <set-id> --version 1 -d .konwledge/knowledge.db` 绑定，再运行 `auto-evaluation run` 检查当前知识。之后文件发布／更新、候选批准、Schema 新版本和时效变化会自动评测，任务支持历史查询、重试及租约恢复。变更已提交但评测未通过时，CLI 返回 `3` 并明确提示；不自动回滚或更新基线。配置和边界见 [知识变更自动评测](docs/auto-evaluation.md)。
+
 ## 本机 API（U18，Unreleased）
 
 ```bash
@@ -819,6 +825,9 @@ Selection preserves retrieval order and applies the following rules:
   whole unit and consider the next hit; do not truncate quotes or synthesize summaries.
 - Assign continuous labels `[1]`, `[2]`, etc. Return skipped unit IDs with `status`,
   `duplicate`, `overlap`, `budget`, or `max_units` reasons.
+
+`max_chars` remains a character limit. The Unreleased `max_tokens` option adds an exact,
+optional tokenizer budget alongside it; see [token budget and acceptance](docs/acceptance.md).
 
 `max_chars` defaults to **8,000 Python Unicode code points**, not bytes or model tokens.
 It measures `len(context_text)`, including the fixed preamble, labels, metadata, JSON escapes,

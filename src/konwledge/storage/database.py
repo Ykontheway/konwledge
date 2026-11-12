@@ -81,6 +81,12 @@ def _add_missing_columns(engine: Engine) -> None:
 
 
 def create_session_factory(engine: Engine) -> SessionFactory:
-    """Build sessions with explicit transaction completion and stable entity state."""
+    """Build hooked sessions with explicit completion and stable entity state."""
 
-    return sessionmaker(bind=engine, expire_on_commit=False)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    # Import lazily to avoid a storage/service import cycle. Construction installs
+    # the transaction hooks but performs no writes and remains disabled by default.
+    from konwledge.auto_evaluation import AutoEvaluationService
+
+    AutoEvaluationService(factory)
+    return factory
