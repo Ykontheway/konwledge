@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API 与隔离分发验证；U19（**Unreleased**）加入对话版本导入、确定性候选提取和人工终态审核；U20（**Unreleased**）加入只读数据库 schema 捕获、不可变历史和 schema diff。版本号仍为 `0.1.0`，本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。前端停留 V2；已补齐 U14～U16 验收和知识变更自动评测，并跑通真实项目文档的隔离验收。本轮仅规划后续 V3/V4 前后端联调，未开发新页面或部署服务。
+> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API 与隔离分发验证；U19（**Unreleased**）加入对话版本导入、确定性候选提取和人工终态审核；U20（**Unreleased**）加入只读数据库 schema 捕获、不可变历史和 schema diff。版本号仍为 `0.1.0`，本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。前端停留 V2；已补齐 U14～U16 验收和知识变更自动评测，并跑通真实项目文档的隔离验收。B1 已完成明确启用的只读管理 API 及真实历史导航验收；前端仍停留 V2，下一批接入 V3 生命周期与变更视图，未开发新页面或部署服务。
 
 ## Implemented increments
 
@@ -119,7 +119,25 @@ uv run python scripts/real_knowledge_acceptance.py \
 
 每次运行建立独立 SQLite 和文档副本，证据保存在输出根目录下的唯一运行目录，不覆盖旧报告，也不改原始文档。详见 [真实文档变更验收](docs/real-knowledge-acceptance.md)。
 
-后续按只读管理数据契约、V3 生命周期与变更视图、V4 评测导览、受控变更交互、U22 MCP 的顺序推进。先让前端展示真实结果及证据，再开放限定写入；Snapshot V1 和现有上下文 API 保持兼容。本轮没有修改前端、管理 API 或部署配置。详见 [前后端一体化演示路线](docs/integrated-demo-roadmap.md)。
+B1 已提供只读管理数据契约，并通过真实任务导航验收。下一批为 V3 生命周期与变更视图，再推进 V4 评测导览、受控变更交互和 U22 MCP。先让前端展示真实结果及证据，再开放限定写入；Snapshot V1 和现有上下文 API 保持兼容。本轮没有修改前端或部署配置。详见 [前后端一体化演示路线](docs/integrated-demo-roadmap.md)。
+
+## 工作台只读管理 API（B1，Unreleased）
+
+```bash
+# 先通过凭据管理器或进程环境注入非空 KNOWLEDGE_API_KEY。
+knowledge serve --enable-management --host 127.0.0.1 --port 8000 \
+  --database .konwledge/knowledge.db
+```
+
+管理端点默认关闭，开启后必须认证，全部为 GET。`/v1/management` 提供分页任务、revision、lineage、文档版本 Diff 和精确历史证据。普通响应使用白名单，不透传源全文、query、locator 或任意 payload；证据端点按明确授权返回对应版本的原文选段。读取不新增任务，不用最新正文替换历史证据。
+
+```bash
+uv run python scripts/management_api_acceptance.py \
+  --database <real-acceptance-run-directory>/knowledge.db \
+  --report .konwledge/b1-management-acceptance-new.json
+```
+
+脚本在真实文档验收库上通过 HTTPX ASGITransport 检查完整导航与只读边界，不监听公网、不代表已部署。详见 [管理 API 契约、安全边界与验收](docs/management-api.md)。
 
 ## 本机 API（U18，Unreleased）
 

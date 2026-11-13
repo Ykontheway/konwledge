@@ -157,3 +157,11 @@ uv run python scripts/verify_distribution.py --output-dir dist/u18-verification
 `test_api_clients.py` 用真实 SDK 和 HTTPX `MockTransport` 将完整 method/path/query/body/headers 转发给 FastAPI `TestClient`；固定 `as_of` 和所有检索控制，验证原生 JSON 与两个客户端 `assistant.content` 解析出的 packet 相等，并验证不支持选项确实被拒绝、没有使用量伪造。`test_api_cli.py` 替换 `uvicorn.run`，验证默认/自定义库、loopback/端口、密钥与缺依赖边界、错误不落盘、engine 释放。
 
 分发验证对 wheel、sdist 分别先进行 core-only 隔离 smoke，再安装同一产物的 `[api]`。API smoke 复制到仓库外、通过 `python -I` 执行，证明 API 模块来自隔离环境 `site-packages`、没有 SDK/HTTPX，直接驱动 ASGI 并替换 `uvicorn.run`，验证只读请求和启动释放。summary 的 `api_extra` 保存结果。CI 仍只在 PR/`main` 触发；功能分支 push 不代表远端 CI 已运行。
+
+## 工作台管理读取（B1）
+
+在现有 `[api]` 安装下，增加 `knowledge serve --enable-management` 和 `create_app(..., enable_management=True)`。管理接口默认关闭，启用时必须提供非空密钥，即使绑定本机也不能匿名访问。全部管理端点为 GET，不改变上述 U18 请求或响应协议。
+
+`/v1/management` 提供任务、revision、lineage、文档版本 Diff 与精确历史原文证据。普通响应不包含源正文、query、locator 或任意 payload；证据端点在认证后明确返回所选版本的原文选段，不代替授权、脱敏或浏览器端安全渲染。
+
+详细字段、分页、只读连接和历史证据边界见 [工作台只读管理 API](management-api.md)。本批没有前端联调、HTTP 写入或公网部署。

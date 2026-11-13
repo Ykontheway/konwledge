@@ -17,7 +17,13 @@ class ServerRuntimeError(RuntimeError):
     """不携带底层异常内容的启动/运行错误。"""
 
 
-def run_server(database: Path, *, host: str = "127.0.0.1", port: int = 8000) -> None:
+def run_server(
+    database: Path,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    enable_management: bool = False,
+) -> None:
     """校验本地配置，打开已有数据库，阻塞运行，并始终释放 engine。
 
     启动允许 additive schema/FTS 初始化，HTTP 请求只读。SQLite mode=rw
@@ -25,6 +31,8 @@ def run_server(database: Path, *, host: str = "127.0.0.1", port: int = 8000) -> 
     不依赖 DNS；密钥只读取环境变量，不作为 CLI 参数接受或输出。
     """
 
+    if not isinstance(enable_management, bool):
+        raise TypeError("enable_management must be a bool")
     if host not in {"127.0.0.1", "::1", "localhost"}:
         raise ValueError("--host 仅允许 127.0.0.1、::1 或 localhost")
     if isinstance(port, bool) or not 1 <= port <= 65535:
@@ -32,6 +40,8 @@ def run_server(database: Path, *, host: str = "127.0.0.1", port: int = 8000) -> 
     api_key = os.environ.get("KNOWLEDGE_API_KEY")
     if api_key is not None and not api_key.strip():
         raise ValueError("显式设置的 KNOWLEDGE_API_KEY 不得为空或仅含空白")
+    if enable_management and api_key is None:
+        raise ValueError("--enable-management 需要通过环境变量 KNOWLEDGE_API_KEY 设置访问密钥")
     database_path = database.expanduser().resolve()
     if not database_path.is_file():
         raise ValueError("--database 必须指向已有数据库文件；请先使用 knowledge import")
@@ -49,9 +59,12 @@ def run_server(database: Path, *, host: str = "127.0.0.1", port: int = 8000) -> 
             query={"mode": "rw", "uri": "true"},
         )
         engine = create_sqlite_engine(url.render_as_string(hide_password=False))
+        # Management readers inspect engine.url.database to open a separate ro handle;
+        # keep the underlying mode=rw creator while exposing the filesystem path.
+        engine.url = engine.url.set(database=database_path.as_posix())
         create_schema(engine)
         library = KnowledgeLibrary(create_session_factory(engine))
-        application = create_app(library, api_key=api_key)
+        application = create_app(library, api_key=api_key, enable_management=enable_management)
         uvicorn.run(
             application,
             host="127.0.0.1" if host == "localhost" else host,

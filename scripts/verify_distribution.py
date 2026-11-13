@@ -27,7 +27,18 @@ ACCEPTANCE_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_acceptance_smoke
 TOKENS_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_tokens_smoke.py"
 API_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_api_smoke.py"
 POSTGRES_SMOKE_SCRIPT = PROJECT_ROOT / "scripts" / "installed_postgres_smoke.py"
-API_MODULES = tuple(f"konwledge/api/{name}.py" for name in ("__init__", "app", "models", "server"))
+API_MODULES = tuple(
+    f"konwledge/api/{name}.py"
+    for name in (
+        "__init__",
+        "app",
+        "models",
+        "server",
+        "management",
+        "management_models",
+        "management_service",
+    )
+)
 QUALITY_MODULES = (
     "konwledge/quality/__init__.py",
     "konwledge/quality/models.py",

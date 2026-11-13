@@ -6,6 +6,13 @@ The project is in alpha. Minor releases may refine public and lower-level APIs a
 
 ## Unreleased — U14-U16 acceptance and U18-U20
 
+### B1 工作台只读管理 API
+
+- 增加明确启用的 `/v1/management` GET 契约：分页任务、revision 导航、稳定 lineage、文档版本与 Diff，以及精确历史证据。响应模型 frozen、extra forbid，报告与 payload 使用白名单投影。
+- `knowledge serve --enable-management` 和 `create_app(..., enable_management=True)` 必须提供有效密钥；默认不挂载管理端点。保留 U18 请求协议、Snapshot V1、loopback、已有数据库与关闭 access log 的边界。
+- 使用独立 SQLite 只读连接，不写库、不触发评测。历史证据校验版本、范围和 hash；缺失、损坏、跨源 Diff、非法请求和写方法均有明确安全结果。
+- 增加管理契约、安全接线与真实库 HTTP 导航验收，并扩展 wheel/sdist 新模块检查和安装后管理 smoke。本次未修改前端、发布或部署。
+
 ### 后端验收与自动评测
 
 - U14 增加可选 `[tokens]` 与真实 tiktoken 预算，覆盖完整 context rendering；保留默认字符预算、ContextPacket JSON 和冻结 Demo 不变。

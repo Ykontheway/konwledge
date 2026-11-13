@@ -35,11 +35,17 @@ if TYPE_CHECKING:
 _MODEL_CREATED = 0
 
 
-def create_app(library: KnowledgeLibrary, *, api_key: str | None = None) -> FastAPI:
+def create_app(
+    library: KnowledgeLibrary,
+    *,
+    api_key: str | None = None,
+    enable_management: bool = False,
+) -> FastAPI:
     """Create an API over an existing library whose lifecycle remains caller-owned.
 
     FastAPI is imported only when this optional transport is instantiated. The
     factory neither creates storage nor closes the injected library's engine.
+    Management routes are an explicit opt-in and require bearer auth even on loopback.
     """
 
     try:
@@ -53,10 +59,14 @@ def create_app(library: KnowledgeLibrary, *, api_key: str | None = None) -> Fast
             "FastAPI is required for the API transport; install the 'api' extra"
         ) from None
 
+    if not isinstance(enable_management, bool):
+        raise TypeError("enable_management must be a bool")
     if api_key is not None and not isinstance(api_key, str):
         raise TypeError("api_key must be a string or None")
-    if api_key == "":
-        raise ValueError("api_key must not be empty")
+    if api_key is not None and not api_key.strip():
+        raise ValueError("api_key must not be empty or contain only whitespace")
+    if enable_management and api_key is None:
+        raise ValueError("enable_management requires a non-empty api_key")
 
     # When authentication is enabled, do not accidentally publish interactive
     # documentation that cannot itself enforce the bearer-key requirement.
@@ -191,6 +201,29 @@ def create_app(library: KnowledgeLibrary, *, api_key: str | None = None) -> Fast
     }
     auth_dependencies = [Depends(require_api_key)] if api_key is not None else []
 
+    if enable_management:
+        management_api_key = api_key
+        assert management_api_key is not None
+
+        @app.middleware("http")
+        async def require_management_api_key(request: Any, call_next: Any) -> Any:
+            # Management uses the same bearer-token comparison as the dependency above,
+            # but as middleware so unauthenticated requests never reach the router or DB.
+            if request.url.path.startswith("/v1/management"):
+                authorization = request.headers.get("authorization", "")
+                scheme, _, token = authorization.partition(" ")
+                supplied = token if scheme.lower() == "bearer" and token else ""
+                if not secrets.compare_digest(supplied, management_api_key):
+                    return error_response(
+                        401,
+                        message="Invalid or missing API key.",
+                        error_type="invalid_request_error",
+                        param=None,
+                        code="invalid_api_key",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+            return await call_next(request)
+
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(status="ok", version=__version__)
@@ -280,6 +313,11 @@ def create_app(library: KnowledgeLibrary, *, api_key: str | None = None) -> Fast
                 ),
             ),
         )
+
+    if enable_management:
+        from konwledge.api.management import build_management_router
+
+        app.include_router(build_management_router(library), dependencies=auth_dependencies)
 
     return app
 

@@ -22,6 +22,7 @@ from sqlalchemy import Engine, event
 
 from konwledge import KnowledgeLibrary, __version__
 from konwledge.api import app as app_module
+from konwledge.api import management as management_module
 from konwledge.api import server
 from konwledge.api.app import create_app
 from konwledge.cli import main as cli_main
@@ -175,8 +176,22 @@ def verify_routes(application: FastAPI) -> None:
     assert status == 400 and error["error"]["code"] == "unsupported_option"
 
 
+def verify_management_routes(library: KnowledgeLibrary) -> None:
+    disabled = create_app(library, api_key=KEY)
+    status, _ = asyncio.run(request(disabled, "GET", "/v1/management/jobs"))
+    assert status == 404
+    assert "/v1/management/jobs" not in disabled.openapi()["paths"]
+
+    enabled = create_app(library, api_key=KEY, enable_management=True)
+    status, _ = asyncio.run(request(enabled, "GET", "/v1/management/jobs", auth=False))
+    assert status == 401
+    status, jobs = asyncio.run(request(enabled, "GET", "/v1/management/jobs"))
+    assert status == 200 and jobs["items"] == []
+    assert "/v1/management/jobs" in enabled.openapi()["paths"]
+
+
 def verify_installed() -> None:
-    for module in (app_module, server):
+    for module in (app_module, management_module, server):
         filename = module.__file__
         assert filename is not None
         path = Path(filename).resolve()
@@ -346,6 +361,7 @@ def verify(root: Path) -> None:
         library.import_path(source)
         event.listen(engine, "before_cursor_execute", capture_sql)
         verify_routes(create_app(library, api_key=KEY))
+        verify_management_routes(library)
         assert writes == [], "HTTP request performed a write"
     finally:
         engine.dispose()
@@ -367,6 +383,8 @@ def verify(root: Path) -> None:
     def run(application: FastAPI, **kwargs: Any) -> None:
         assert kwargs == {"host": "127.0.0.1", "port": 8000, "access_log": False}
         verify_routes(application)
+        status, jobs = asyncio.run(request(application, "GET", "/v1/management/jobs"))
+        assert status == 200 and jobs["items"] == []
         called()
 
     with (
@@ -374,7 +392,12 @@ def verify(root: Path) -> None:
         patch.object(server, "create_sqlite_engine", capture_engine),
         patch("uvicorn.run", run),
     ):
-        assert cli_main(["serve", "--database", str(database), "--host", "localhost"]) == 0
+        assert (
+            cli_main(
+                ["serve", "--database", str(database), "--host", "localhost", "--enable-management"]
+            )
+            == 0
+        )
     called.assert_called_once()
     disposed.assert_called_once()
 
@@ -398,7 +421,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "conversation_approval_readonly",
                     "database_schema_current_only",
                     "readonly",
-                    "cli_startup_disposal",
+                    "management_disabled_hidden",
+                    "management_jobs_readonly",
+                    "cli_management_startup_disposal",
                 ],
             }
         )

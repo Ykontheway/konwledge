@@ -122,7 +122,7 @@ def test_inspect_wheel_accepts_metadata_resources_and_both_entry_points(tmp_path
             "demo_resources",
             "runtime_exclusions",
         ),
-        file_count=31,
+        file_count=34,
     )
 
 
@@ -175,7 +175,7 @@ def test_inspect_sdist_allows_source_tests_with_narrow_warning(tmp_path: Path) -
     result = inspect_sdist(sdist, NAME, VERSION)
 
     assert result.format == "sdist"
-    assert result.file_count == 32
+    assert result.file_count == 35
     assert len(result.warnings) == 1
     assert "source tests" in result.warnings[0]
 

@@ -308,6 +308,13 @@ def serve_command(
         str, typer.Option("--host", help="仅允许 127.0.0.1、::1 或 localhost。")
     ] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", min=1, max=65535)] = 8000,
+    enable_management: Annotated[
+        bool,
+        typer.Option(
+            "--enable-management",
+            help="显式启用只读 B1 管理 API；必须设置 KNOWLEDGE_API_KEY。",
+        ),
+    ] = False,
 ) -> None:
     """运行本机只读上下文 API；密钥仅从 KNOWLEDGE_API_KEY 环境变量读取。"""
 
@@ -315,7 +322,7 @@ def serve_command(
     from konwledge.api.server import run_server
 
     try:
-        run_server(database, host=host, port=port)
+        run_server(database, host=host, port=port, enable_management=enable_management)
     except ValueError as error:
         _fail(str(error), code=2)
     except ImportError:
