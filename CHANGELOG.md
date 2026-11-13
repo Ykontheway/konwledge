@@ -15,6 +15,12 @@ The project is in alpha. Minor releases may refine public and lower-level APIs a
 - CLI 新增 `quality` 与 `auto-evaluation`，知识变更评测未通过时保留普通／JSON stdout，在 stderr 提示并退出 `3`。扩展 wheel/sdist 独立安装 smoke、真实 tokenizer 验收与 CI 证据。
 - 本次不改变 v0.1.0 身份、U18 HTTP 请求协议或 Snapshot V1，不包含 MCP、前端、正式发布或部署。
 
+### 真实文档验收与展示路线
+
+- 新增 `scripts/real_knowledge_acceptance.py`，用项目真实使用文档、独立 SQLite 与固定评测集，通过正式 CLI 验证正向变更、质量下降、恢复和重复导入。每次运行保留独立报告，不改原始文档，不接受或更新人工基线。
+- 新增 3 个测试，覆盖变更后自动任务、失败不回滚与历史保留、固定期望和安全失败报告；本次不修改生产服务。
+- 增加前后端一体化展示路线，按只读管理契约、V3 生命周期与变更视图、V4 评测导览、受控写入和 U22 MCP 安排依赖。本轮仅验收与规划，未开发前端、增加 HTTP 管理接口或执行部署。
+
 ### U20
 
 - 增加 SQLite 与 PostgreSQL schema-only 捕获。SQLite 使用 `mode=ro`、catalog authorizer、元数据 PRAGMA 和有界超时；PostgreSQL 使用 psycopg 3、只读 repeatable-read 事务及连接、statement、lock timeout。

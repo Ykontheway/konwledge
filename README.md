@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API 与隔离分发验证；U19（**Unreleased**）加入对话版本导入、确定性候选提取和人工终态审核；U20（**Unreleased**）加入只读数据库 schema 捕获、不可变历史和 schema diff。版本号仍为 `0.1.0`，本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。前端停留 V2，V3/V4 与部署继续暂停。
+> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API 与隔离分发验证；U19（**Unreleased**）加入对话版本导入、确定性候选提取和人工终态审核；U20（**Unreleased**）加入只读数据库 schema 捕获、不可变历史和 schema diff。版本号仍为 `0.1.0`，本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。前端停留 V2；已补齐 U14～U16 验收和知识变更自动评测，并跑通真实项目文档的隔离验收。本轮仅规划后续 V3/V4 前后端联调，未开发新页面或部署服务。
 
 ## Implemented increments
 
@@ -31,7 +31,7 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U19 | Unreleased | 不可变对话版本、确定性候选提取、人工批准/拒绝审计，以及 conversation/candidate CLI（无版本提升） |
 | U20 | Unreleased | SQLite/PostgreSQL 只读 schema 捕获、不可变版本历史、检索物化、导出和 schema diff（无版本提升） |
 
-Each increment builds on the preceding implementation. This branch contains U01-U20, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. Further frontend development and deployment are paused; V3/V4 and publication of a live page are not part of this release-readiness closure.
+Each increment builds on the preceding implementation. This branch contains U01-U20, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. V3/V4 frontend integration is now planned around the verified change-to-evaluation workflow, but remains unimplemented. Live deployment is still a separate, explicitly authorized operation.
 
 ## Why this project
 
@@ -107,6 +107,19 @@ A passing gate exits `0`; a valid regression exits `3`. Invalid input exits `2`,
 U14 增加真实 Token 预算；U15 保留原 6 条 Demo，另建 30 条独立用例；U16 增加默认质量门槛和 1,000 active 单元的 P95 性能验收。运行 `uv run knowledge quality acceptance` 即可检查，不修改业务库或人工基线。详见 [后端验收](docs/acceptance.md)。
 
 业务知识变更自动评测默认关闭。导入自己的评测集后，用 `knowledge auto-evaluation enable --set-id <set-id> --version 1 -d .konwledge/knowledge.db` 绑定，再运行 `auto-evaluation run` 检查当前知识。之后文件发布／更新、候选批准、Schema 新版本和时效变化会自动评测，任务支持历史查询、重试及租约恢复。变更已提交但评测未通过时，CLI 返回 `3` 并明确提示；不自动回滚或更新基线。配置和边界见 [知识变更自动评测](docs/auto-evaluation.md)。
+
+## 真实文档验收与后续开发
+
+已用项目自身 `docs/auto-evaluation.md`、`docs/acceptance.md` 跑通隔离的真实文档验收：正向变更自动通过，关键证据缺失后自动失败，恢复后重新通过。固定 4 条用例、默认策略及数据集 hash 不变；失败知识已提交、失败报告保留，原样重导不触发任务。这里验证的是项目使用文档与 lexical 检索，不是生产业务库或生成答案质量。
+
+```bash
+uv run python scripts/real_knowledge_acceptance.py \
+  --output-dir .konwledge/real-knowledge-acceptance
+```
+
+每次运行建立独立 SQLite 和文档副本，证据保存在输出根目录下的唯一运行目录，不覆盖旧报告，也不改原始文档。详见 [真实文档变更验收](docs/real-knowledge-acceptance.md)。
+
+后续按只读管理数据契约、V3 生命周期与变更视图、V4 评测导览、受控变更交互、U22 MCP 的顺序推进。先让前端展示真实结果及证据，再开放限定写入；Snapshot V1 和现有上下文 API 保持兼容。本轮没有修改前端、管理 API 或部署配置。详见 [前后端一体化演示路线](docs/integrated-demo-roadmap.md)。
 
 ## 本机 API（U18，Unreleased）
 
