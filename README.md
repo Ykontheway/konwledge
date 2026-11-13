@@ -2,7 +2,7 @@
 
 Konwledge is a local-first toolkit for managing the full lifecycle of knowledge used by AI applications. The project will track where knowledge came from, how it changed, when it became stale, and whether a change improved or degraded retrieval quality.
 
-> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18（**Unreleased**）加入可选本机上下文 API 与隔离分发验证；U19（**Unreleased**）加入对话版本导入、确定性候选提取和人工终态审核；U20（**Unreleased**）加入只读数据库 schema 捕获、不可变历史和 schema diff。版本号仍为 `0.1.0`，本次没有创建 tag、GitHub Release、PyPI 发布或验证公开部署。前端停留 V2；已补齐 U14～U16 验收和知识变更自动评测，并跑通真实项目文档的隔离验收。B1 已完成明确启用的只读管理 API 及真实历史导航验收；前端仍停留 V2，下一批接入 V3 生命周期与变更视图，未开发新页面或部署服务。
+> 状态：**v0.1.0 已准备、未发布（alpha）**。U17 完成本地发布准备；U18～U20（**Unreleased**）已加入本机上下文 API、对话导入与人工审核、只读数据库 schema 捕获。U14～U16 验收、知识变更自动评测和真实项目文档隔离验收已完成。B1 已提供只读管理 API；前端已授权恢复 B2，V3 生命周期与变更视图已实现，原 V2 静态演示保留。下一批 B3 补 V4 评测导览，B4 写交互／B5 MCP 未实现。版本仍为 `0.1.0` prepared，未创建 tag、PR、main 合并、GitHub Release、PyPI 发布或公开 live 部署。完整 Python 回归与真实浏览器最短导航已通过，详见 [本机只读工作台](docs/live-workbench.md)。
 
 ## Implemented increments
 
@@ -30,8 +30,10 @@ Konwledge is a local-first toolkit for managing the full lifecycle of knowledge 
 | U18 | Unreleased | 可选 `[api]` 本机只读 HTTP、`serve` 安全启动、OpenAI/LangChain SDK 验收、可选依赖及隔离分发验证（无版本提升） |
 | U19 | Unreleased | 不可变对话版本、确定性候选提取、人工批准/拒绝审计，以及 conversation/candidate CLI（无版本提升） |
 | U20 | Unreleased | SQLite/PostgreSQL 只读 schema 捕获、不可变版本历史、检索物化、导出和 schema diff（无版本提升） |
+| B1 | Unreleased | 明确启用的只读管理 API、任务与历史证据导航、真实库 HTTP 验收 |
+| V3（B2） | Unreleased | 保留 V2 静态演示，新增本机实时生命周期与变更视图、严格 dev proxy 和启动器 |
 
-Each increment builds on the preceding implementation. This branch contains U01-U20, V1, and V2. `U` slices grow the core library; `V` slices build the read-only demo site on top of it. V3/V4 frontend integration is now planned around the verified change-to-evaluation workflow, but remains unimplemented. Live deployment is still a separate, explicitly authorized operation.
+Each increment builds on the preceding implementation. 当前分支包含 U01～U20、V1／V2、B1 和 V3（B2）。`U` 扩展核心库，`V` 扩展展示；V4（B3）评测导览延后，下一批开发。公开部署仍需另行明确授权。
 
 ## Why this project
 
@@ -119,7 +121,21 @@ uv run python scripts/real_knowledge_acceptance.py \
 
 每次运行建立独立 SQLite 和文档副本，证据保存在输出根目录下的唯一运行目录，不覆盖旧报告，也不改原始文档。详见 [真实文档变更验收](docs/real-knowledge-acceptance.md)。
 
-B1 已提供只读管理数据契约，并通过真实任务导航验收。下一批为 V3 生命周期与变更视图，再推进 V4 评测导览、受控变更交互和 U22 MCP。先让前端展示真实结果及证据，再开放限定写入；Snapshot V1 和现有上下文 API 保持兼容。本轮没有修改前端或部署配置。详见 [前后端一体化演示路线](docs/integrated-demo-roadmap.md)。
+B1 已提供只读管理契约；B2 已完成 V3 生命周期与变更视图，并保留现有静态演示。下一批 B3 补 V4 可比结果、用例级诊断与导览，之后再安排 B4 受控写交互和 B5 U22 MCP。Snapshot V1 和现有上下文 API 保持兼容，当前没有公开 live 部署。详见 [前后端一体化演示路线](docs/integrated-demo-roadmap.md)。
+
+## 本机只读工作台（B2，Unreleased）
+
+首次运行先执行 `uv sync --locked --dev` 和 `(cd web && pnpm install --frozen-lockfile)`。从仓库根目录运行上面的真实文档验收脚本，确认成功后，将其输出 `report.json` 的实际父目录替换到下面命令中：
+
+```bash
+uv run python scripts/live_workbench.py \
+  --database "<real-acceptance-run-directory>/knowledge.db" \
+  --web-port 5175 --api-port 8015
+```
+
+启动器使用已有库，自动生成临时 key，先等待 backend health，再启动 web；打开 [本机任务列表](http://127.0.0.1:5175/#lifecycle/jobs)，`Ctrl+C` 只清理自己的子进程。backend 启动可能执行已有 schema／FTS 初始化，HTTP 读取只读，页面不新增 evaluation 或更新 baseline。密钥仅留在 backend 与 Vite Node 进程，浏览器同源 GET 不带 key；dev proxy 默认无配置返回 503，preview／dist 不提供该代理，不自动回退 fixture。
+
+实时页面提供任务过滤、分页刷新，以及 revision／document／lineage／Diff／exact evidence 的 hash 导航。任务详情已有初步 metrics／checks，`null` 不当作零；单元状态是持久化当前缓存，不是任务 as-of。安全边界、漂移检查与真实浏览器联调结果见 [本机只读工作台](docs/live-workbench.md)。
 
 ## 工作台只读管理 API（B1，Unreleased）
 
@@ -133,7 +149,7 @@ knowledge serve --enable-management --host 127.0.0.1 --port 8000 \
 
 ```bash
 uv run python scripts/management_api_acceptance.py \
-  --database <real-acceptance-run-directory>/knowledge.db \
+  --database "<real-acceptance-run-directory>/knowledge.db" \
   --report .konwledge/b1-management-acceptance-new.json
 ```
 
@@ -235,7 +251,14 @@ pnpm install --frozen-lockfile
 pnpm verify        # typecheck → schema sync → Vitest → production build
 ```
 
-The repository contains a separate site verification job and a Pages workflow configuration. Both use `pnpm verify`, so a future publication attempt is blocked if verification fails. No public Pages deployment was performed or verified for U17, and further frontend work is paused. Keep `strict`, `noUnusedLocals`, and `noUnusedParameters` enabled. During page development, run `pnpm typecheck` after each component change, then `pnpm verify` before committing. Vitest covers snapshot mapping, Unicode highlight ranges, and server-rendering smoke tests for the three demo pages; it does not replace browser interaction or visual testing.
+仓库保留独立站点验证 job 和 Pages workflow，均运行 `pnpm verify`。management 契约另外从仓库根目录执行两条漂移检查：
+
+```bash
+uv run python scripts/export_management_schema.py --check
+node web/scripts/gen-management-types.mjs --check
+```
+
+前端已授权恢复 B2 并实现 V3；Pages 配置仍不代表已公开部署，preview／dist 也不含本机 dev proxy。保留 `strict`、`noUnusedLocals` 和 `noUnusedParameters`；开发后执行 `pnpm typecheck` 和 `pnpm verify`。Vitest 覆盖静态演示、实时 adapter／路由／请求状态和 dev proxy，但不代替浏览器交互或视觉验收。
 
 The optional LanceDB adapter has its own CI job. Run it locally with:
 
@@ -346,7 +369,7 @@ KNOWLEDGE_TEST_POSTGRES_DSN='postgresql+psycopg://konwledge_test:konwledge_test@
 │   ├── architecture.md
 │   └── releasing.md
 ├── tests/
-├── web/                     # static demo site (V2; further frontend work paused)
+├── web/                     # V2 静态演示与 V3（B2）本机只读工作台
 │   ├── scripts/gen-types.mjs
 │   └── src/
 │       ├── lib/             # snapshot views, code-point slicing, formatting (+ Vitest)
@@ -1035,7 +1058,7 @@ or production embedding quality.
 
 ## Demo snapshot
 
-The current V2 demo site is a static page that only renders data; every number it shows comes from a JSON snapshot exported by the CLI. V1 provides that data pipeline. Planned V3/V4 lifecycle and evaluation views are deferred.
+V2 静态演示继续读取 CLI 导出的 JSON snapshot，V1 提供这条数据管线。V3（B2）的本机实时视图另用独立 management schema，不修改 Snapshot V1 或 demo golden；V4（B3）评测导览仍延后。
 
 ```bash
 uv run knowledge demo build            # plays the story into .konwledge/demo/
@@ -1082,8 +1105,7 @@ See [demo/README.md](demo/README.md) for the snapshot layout.
 
 ## Demo site
 
-`web/` is a static Vite + React + TypeScript + Tailwind site that renders `demo/snapshot.json`
-(bundled at build time). It has no backend and re-implements no lifecycle rule.
+`web/` 保留 Vite + React + TypeScript + Tailwind 静态演示，仍在构建时打包 `demo/snapshot.json`，不自行实现生命周期规则。下面三页使用 Snapshot；新增“实时工作台／只读”入口通过本机 B1 API 展示真实历史，接线见 [本机只读工作台](docs/live-workbench.md)。
 
 | Page | Shows | Backed by |
 | --- | --- | --- |
@@ -1093,7 +1115,7 @@ See [demo/README.md](demo/README.md) for the snapshot layout.
 
 ```bash
 cd web
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev           # http://localhost:5173
 pnpm gen:types     # regenerate src/types/snapshot.gen.ts after a schema change
 ```
@@ -1104,6 +1126,8 @@ pnpm gen:types     # regenerate src/types/snapshot.gen.ts after a schema change
   point, not UTF-16 unit; Vitest checks that every unit's range reproduces its stored text and that
   the segments tile each document exactly.
 - **Deployment is deferred.** `.github/workflows/deploy-demo.yml` contains a GitHub Pages build configuration, but U17 did not trigger or verify a public deployment. Treat site publication as a separate, explicitly approved maintainer action.
+
+<!-- B2 文稿复核：使用 dedicated grep 扫描，中文半角标点、中文长破折号、编号／量词标题、元话语及对比句式均为 0。事实回读统一状态、增量表、启动说明和展示章节：B2／V3 已实现，V2 静态演示保留，B3／V4 下一批，B4／B5 未实现；HTTP 只读与启动初始化分开，实际验收目录不固定，密钥不交给浏览器，无公开 live 部署。完整 Python 与云端最短导航已通过，已知未验证范围见工作台说明；无关英文内容格式未调整。 -->
 
 ## License
 

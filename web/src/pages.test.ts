@@ -38,11 +38,15 @@ describe("Demo page rendering", () => {
     const html = renderToStaticMarkup(
       createElement(Layout, {
         currentView: "overview",
+        currentSection: "静态演示",
+        currentTitle: "总览",
+        currentTone: "demo",
         onViewChange: () => {},
         children: createElement(OverviewPage),
       }),
     );
     expect(html).toContain("原文溯源");
+    expect(html).toContain("生命周期工作台");
     expect(html).toContain("https://github.com/Ykontheway/konwledge");
   });
 });

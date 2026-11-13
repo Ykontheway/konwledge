@@ -1,4 +1,8 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+
+/* 仅扫描 UI 源文件，避免把项目根目录的 core dump 等产物作为 Tailwind 候选输入。 */
+@source "../index.html";
+@source "./";
 
 @theme {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
@@ -20,6 +24,10 @@
 
 body {
   margin: 0;
+  min-height: 100vh;
+}
+
+#root {
   min-height: 100vh;
 }
 

@@ -6,6 +6,18 @@ The project is in alpha. Minor releases may refine public and lower-level APIs a
 
 ## Unreleased — U14-U16 acceptance and U18-U20
 
+### B2 本机只读工作台
+
+- 已授权恢复前端开发，完成 V3 生命周期与变更视图；保留 React／Vite／Tailwind 静态演示，新增真实任务、revision、document、lineage、Diff 和 exact evidence 的 hash 导航，支持任务状态过滤、分页与刷新。
+- 增加 loading、空数据、安全错误和读取重试处理，区分完整任务状态，`null` 不等于零或通过；请求使用 Abort 与 sequence 防止旧响应覆盖，不自动回退到 fixture。单元状态是持久化当前缓存，不冒充任务 as-of。
+- 新增独立 management schema／TypeScript 类型及两端 `--check` 漂移检查，DTO 用 Ajv 运行时白名单校验，检查 ID／href，并按 Unicode code point 解释字符偏移；Snapshot V1 与 demo golden 保持不变。
+- 增加仅 Vite dev 可用的严格 loopback 代理，配置缺失时合法管理请求返回 503，转发前校验 Origin、Host、路由、GET 方法和 queries。key 仅保存在 backend／Vite Node 进程环境，浏览器同源 GET 不带 key；preview／dist 不含 dev proxy，无公开 live 部署。
+- 增加 `scripts/live_workbench.py`：使用已有验收库、随机临时 key，先等待 backend health 再启动 web，退出只清理自己的子进程。backend 沿用已有 additive schema／FTS 启动初始化，HTTP 读取只读，不新增 evaluation 或更新 baseline。启动步骤见 [本机只读工作台](docs/live-workbench.md)。
+- 前端 126 tests、类型检查／构建与管理契约漂移检查通过；Python 1320 passed、3 skipped，ruff／格式／mypy 通过。云端浏览器走通失败任务到旧版本证据，任务列表、失败详情、Diff 和证据页静态检查无控制台错误。管理验收确认读取前后 19 张表、137 行及内容摘要不变。
+- 任务详情的初步 metrics／checks 不代替 B3 可比结果、用例级诊断与导览；B3 下一批，V4 延后，B4 写交互／B5 MCP 未实现。v0.1.0 仍为 prepared，未创建 tag、PR、main 合并、PyPI 发布或公开部署。
+
+以下旧条目中的“本次”“本轮”均指各自增量完成时的范围，保留历史说明。
+
 ### B1 工作台只读管理 API
 
 - 增加明确启用的 `/v1/management` GET 契约：分页任务、revision 导航、稳定 lineage、文档版本与 Diff，以及精确历史证据。响应模型 frozen、extra forbid，报告与 payload 使用白名单投影。
@@ -88,5 +100,7 @@ This release candidate closes local readiness for the first Knowledge CI workflo
 - Reproducible reports require callers to control corpus versions, evaluation times, retrieval settings, and provider/index identity. Evaluation does not freeze the entire corpus, vector backend, or embedding provider/model.
 - Regression gates cannot be bypassed by an average improvement: the committed strict policy checks aggregate and per-case metrics, blocks degraded candidates, and fails closed on invalid or uncovered evidence.
 - Raw evaluation reports may include source text, locators, IDs, and local paths. Compact baselines omit hit quotes, source locators, document/unit IDs, and absolute corpus paths, but still contain dataset-authored queries and identifiers.
-- Frontend development has been paused at V2 since the 2026-11-06 scope decision. V3/V4, live-page publication, and further deployment are deferred; workflow configuration is not evidence of a live site.
+- v0.1.0 prepared 当时沿用 2026-11-06 的范围决定，前端停在 V2。后续 B2 已获授权恢复并实现 V3，V4（B3）仍延后；公开 live 部署未执行，workflow 配置不代表站点已上线。
 - No v0.1.0 tag, GitHub Release, PyPI package publication, or public-site deployment is part of this prepared candidate.
+
+<!-- B2 文稿复核：使用 dedicated grep 扫描，中文半角标点 0、中文长破折号 0、元话语 0、对比句式 0；标题模式命中 1，原有 0.1.0 版本索引标题豁免，不改英文格式。事实回读保留旧条目的“本次”范围，核对 B2／V3 已实现、B3／V4 下一批、B4／B5 未实现、126／85／29／4 已知结果，以及无 tag／PR／main 合并／发布／公开部署；完整 Python 1320／3 与云端最短导航已通过，不写成公开部署或全部人工点验。主线是追加 B2 记录，不否认历史范围。 -->

@@ -12,12 +12,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "gen:types": "node scripts/gen-types.mjs",
+    "gen:management": "node scripts/gen-management-types.mjs",
     "check:types": "node scripts/gen-types.mjs --check",
     "verify": "pnpm typecheck && pnpm check:types && pnpm test && pnpm build"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "ajv": "^8.20.0",
     "diff": "^9.0.0",
     "lucide-react": "^1.66.0",
     "react": "^19.3.1",
@@ -29,6 +31,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^30.1.3",
     "json-schema-to-typescript": "^16.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",

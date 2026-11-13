@@ -1,6 +1,6 @@
 # 工作台只读管理 API
 
-B1 为后续 V3/V4 提供真实任务、知识版本和证据的读取契约。管理端点全部是 GET，只有显式启用并提供密钥时才挂载；现有 U18 上下文协议与 Snapshot V1 不变。当前版本仍为未发布的 `0.1.0`，没有公开部署或前端页面改动。
+B1 提供真实任务、知识版本和证据的读取契约，B2 已接入 V3 只读工作台。管理端点全部是 GET，只有显式启用并提供密钥时才挂载；现有 U18 上下文协议与 Snapshot V1 不变。当前版本仍为未发布的 `0.1.0`，没有公开部署。
 
 ## 显式启用
 
@@ -84,7 +84,7 @@ DTO 及嵌套模型均 frozen、extra forbid。前端按 schema 获取字段，�
 uv run python scripts/real_knowledge_acceptance.py \
   --output-dir .konwledge/real-knowledge-acceptance
 uv run python scripts/management_api_acceptance.py \
-  --database <run-directory>/knowledge.db \
+  --database "<run-directory>/knowledge.db" \
   --report .konwledge/b1-management-acceptance-new.json
 ```
 
@@ -94,6 +94,6 @@ uv run python scripts/management_api_acceptance.py \
 
 验收覆盖默认关闭、认证、分页、任务详情、revision 导航、版本 Diff、历史证据，以及未知 UUID、非法参数、跨源 Diff 和拒绝写方法。任务报告不泄漏 query 或源路径；原文只通过明确的 evidence 请求读取。安装后验证同时检查新模块打包及管理开关，核心安装仍不需要 API extra。
 
-下一批为 B2：将这些契约接入现有 V2 页面，展示真实生命周期与变更历史。当前没有开发 adapter 或新页面，也没有完成浏览器端联调。
+B2 已将这些契约接入现有前端，保留静态演示并新增 V3 实时只读视图。启动、安全 dev proxy 和浏览器验收结果见 [本机只读工作台](live-workbench.md)；B3 评测导览为下一批，未公开部署。
 
-<!-- 文稿检查：机械扫描半角中文标点、长破折号、编号标题、元话语与 B2 句式均为 0 处。事实回读核对 8 条 GET 路由、1～100／0～100000 分页、401／404／405／409／410／422 安全行为，以及 3 个任务、19 张表共 137 行读取前后不变；启动初始化与 HTTP 只读分开说明，ASGI 验收不表述为服务部署。 -->
+<!-- 文稿复核：使用 dedicated grep 扫描，中文半角标点、中文长破折号、编号／量词标题、元话语及对比句式均为 0。事实回读保留 B1 的 8 条 GET 路由、1～100／0～100000 分页、安全行为及 3 个任务、19 张表共 137 行读取前后不变；启动初始化与 HTTP 只读分开说明，ASGI 验收不表述为部署。B2／V3 接入已实现，链接到本机启动文档，真实浏览器最短导航已通过，自动测试覆盖与未人工验证范围见启动文档。 -->

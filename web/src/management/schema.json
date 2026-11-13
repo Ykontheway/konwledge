@@ -1,0 +1,1409 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ykontheway/konwledge/blob/main/web/src/management/schema.json",
+  "title": "ManagementApiSchemaBundle",
+  "description": "Read-only B1 management API queries and DTOs exported from Python models.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "AutoEvaluationStatus": {
+      "enum": [
+        "queued",
+        "running",
+        "passed",
+        "failed",
+        "blocked",
+        "superseded"
+      ],
+      "title": "AutoEvaluationStatus",
+      "type": "string"
+    },
+    "DiffCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "added": {
+          "minimum": 0,
+          "title": "Added",
+          "type": "integer"
+        },
+        "modified": {
+          "minimum": 0,
+          "title": "Modified",
+          "type": "integer"
+        },
+        "moved": {
+          "minimum": 0,
+          "title": "Moved",
+          "type": "integer"
+        },
+        "unchanged": {
+          "minimum": 0,
+          "title": "Unchanged",
+          "type": "integer"
+        },
+        "removed": {
+          "minimum": 0,
+          "title": "Removed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "added",
+        "modified",
+        "moved",
+        "unchanged",
+        "removed"
+      ],
+      "title": "DiffCounts",
+      "type": "object"
+    },
+    "DiffItem": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/UnitChangeKind"
+        },
+        "lineage_id": {
+          "format": "uuid",
+          "title": "Lineage Id",
+          "type": "string"
+        },
+        "old": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UnitDTO"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "new": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UnitDTO"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "lineage_id",
+        "old",
+        "new"
+      ],
+      "title": "DiffItem",
+      "type": "object"
+    },
+    "DiffItemPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/DiffItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "total",
+        "limit",
+        "offset"
+      ],
+      "title": "Page[DiffItem]",
+      "type": "object"
+    },
+    "DiffQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "old_document_id": {
+          "format": "uuid",
+          "title": "Old Document Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "old_document_id"
+      ],
+      "title": "DiffQuery",
+      "type": "object"
+    },
+    "DocumentContentType": {
+      "description": "Content formats supported by the first ingestion milestone.",
+      "enum": [
+        "text",
+        "markdown"
+      ],
+      "title": "DocumentContentType",
+      "type": "string"
+    },
+    "DocumentDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "source_id": {
+          "format": "uuid",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "content_type": {
+          "$ref": "#/$defs/DocumentContentType"
+        },
+        "checksum": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Checksum",
+          "type": "string"
+        },
+        "ingested_at": {
+          "format": "date-time",
+          "title": "Ingested At",
+          "type": "string"
+        },
+        "previous_document_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Previous Document Id"
+        },
+        "next_document_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Document Id"
+        },
+        "units": {
+          "$ref": "#/$defs/Page_UnitDTO_"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/ResourceLink"
+          },
+          "title": "Links",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "content_type",
+        "checksum",
+        "ingested_at",
+        "previous_document_id",
+        "next_document_id",
+        "units",
+        "links"
+      ],
+      "title": "DocumentDTO",
+      "type": "object"
+    },
+    "DocumentDiffDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "format": "uuid",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "old_document_id": {
+          "format": "uuid",
+          "title": "Old Document Id",
+          "type": "string"
+        },
+        "new_document_id": {
+          "format": "uuid",
+          "title": "New Document Id",
+          "type": "string"
+        },
+        "counts": {
+          "$ref": "#/$defs/DiffCounts"
+        },
+        "changes": {
+          "$ref": "#/$defs/Page_DiffItem_"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/ResourceLink"
+          },
+          "title": "Links",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_id",
+        "old_document_id",
+        "new_document_id",
+        "counts",
+        "changes",
+        "links"
+      ],
+      "title": "DocumentDiffDTO",
+      "type": "object"
+    },
+    "DocumentUnitsPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/UnitDTO"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "total",
+        "limit",
+        "offset"
+      ],
+      "title": "Page[UnitDTO]",
+      "type": "object"
+    },
+    "EvidenceDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "format": "uuid",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "document_id": {
+          "format": "uuid",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "unit_id": {
+          "format": "uuid",
+          "title": "Unit Id",
+          "type": "string"
+        },
+        "lineage_id": {
+          "format": "uuid",
+          "title": "Lineage Id",
+          "type": "string"
+        },
+        "start_char": {
+          "minimum": 0,
+          "title": "Start Char",
+          "type": "integer"
+        },
+        "end_char": {
+          "exclusiveMinimum": 0,
+          "title": "End Char",
+          "type": "integer"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "document_checksum": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Document Checksum",
+          "type": "string"
+        },
+        "revision_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Revision Ids",
+          "type": "array"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/ResourceLink"
+          },
+          "title": "Links",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_id",
+        "document_id",
+        "unit_id",
+        "lineage_id",
+        "start_char",
+        "end_char",
+        "text",
+        "content_hash",
+        "document_checksum",
+        "revision_ids",
+        "links"
+      ],
+      "title": "EvidenceDTO",
+      "type": "object"
+    },
+    "GetDocumentDiffResponse": {
+      "$ref": "#/$defs/DocumentDiffDTO"
+    },
+    "GetDocumentResponse": {
+      "$ref": "#/$defs/DocumentDTO"
+    },
+    "GetEvidenceResponse": {
+      "$ref": "#/$defs/EvidenceDTO"
+    },
+    "GetJobResponse": {
+      "$ref": "#/$defs/JobDTO"
+    },
+    "GetLineageResponse": {
+      "$ref": "#/$defs/LineageDTO"
+    },
+    "GetRevisionResponse": {
+      "$ref": "#/$defs/RevisionDTO"
+    },
+    "GetUnitResponse": {
+      "$ref": "#/$defs/UnitDTO"
+    },
+    "JobDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "parent_job_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Job Id"
+        },
+        "status": {
+          "$ref": "#/$defs/AutoEvaluationStatus"
+        },
+        "config_generation": {
+          "minimum": 1,
+          "title": "Config Generation",
+          "type": "integer"
+        },
+        "config_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Config Fingerprint",
+          "type": "string"
+        },
+        "dataset_id": {
+          "format": "uuid",
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "dataset_version": {
+          "minimum": 1,
+          "title": "Dataset Version",
+          "type": "integer"
+        },
+        "dataset_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Dataset Hash",
+          "type": "string"
+        },
+        "knowledge_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Knowledge Fingerprint",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "evaluated_at": {
+          "format": "date-time",
+          "title": "Evaluated At",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "attempt_count": {
+          "minimum": 0,
+          "title": "Attempt Count",
+          "type": "integer"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "LEASE_EXPIRED",
+                "QUALITY_GATE_FAILED",
+                "INVALID_EVALUATION",
+                "EVALUATION_ERROR",
+                "CONFIG_MISSING",
+                "INTEGRITY_MISMATCH",
+                "CONFIG_DISABLED",
+                "CONFIG_CHANGED",
+                "DATASET_PIN_MISMATCH",
+                "KNOWLEDGE_CHANGED",
+                "UNKNOWN_ERROR"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafeQualityReport"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trigger_revision_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Trigger Revision Ids",
+          "type": "array"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/ResourceLink"
+          },
+          "title": "Links",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "parent_job_id",
+        "status",
+        "config_generation",
+        "config_fingerprint",
+        "dataset_id",
+        "dataset_version",
+        "dataset_hash",
+        "knowledge_fingerprint",
+        "created_at",
+        "evaluated_at",
+        "started_at",
+        "finished_at",
+        "attempt_count",
+        "error_code",
+        "report",
+        "trigger_revision_ids",
+        "links"
+      ],
+      "title": "JobDTO",
+      "type": "object"
+    },
+    "JobsQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AutoEvaluationStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "dataset_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset Id"
+        },
+        "dataset_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset Version"
+        },
+        "parent_job_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Job Id"
+        }
+      },
+      "title": "JobsQuery",
+      "type": "object"
+    },
+    "KnowledgeUnitStatus": {
+      "description": "Lifecycle states that determine whether a knowledge unit is publishable.",
+      "enum": [
+        "active",
+        "stale",
+        "superseded",
+        "deleted"
+      ],
+      "title": "KnowledgeUnitStatus",
+      "type": "string"
+    },
+    "LineageDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "versions": {
+          "$ref": "#/$defs/Page_UnitDTO_"
+        }
+      },
+      "required": [
+        "id",
+        "versions"
+      ],
+      "title": "LineageDTO",
+      "type": "object"
+    },
+    "ListJobsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JobDTO"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "total",
+        "limit",
+        "offset"
+      ],
+      "title": "Page[JobDTO]",
+      "type": "object"
+    },
+    "PageQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "title": "PageQuery",
+      "type": "object"
+    },
+    "Page_DiffItem_": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/DiffItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "total",
+        "limit",
+        "offset"
+      ],
+      "title": "Page[DiffItem]",
+      "type": "object"
+    },
+    "Page_UnitDTO_": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/UnitDTO"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "total",
+        "limit",
+        "offset"
+      ],
+      "title": "Page[UnitDTO]",
+      "type": "object"
+    },
+    "ResourceLink": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "job",
+            "revision",
+            "document",
+            "unit",
+            "lineage",
+            "evidence"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "href": {
+          "pattern": "^/v1/management/(jobs|revisions|documents|units|lineages)/",
+          "title": "Href",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "href"
+      ],
+      "title": "ResourceLink",
+      "type": "object"
+    },
+    "RevisionChangeType": {
+      "description": "Supported revision operations.",
+      "enum": [
+        "create",
+        "update",
+        "delete"
+      ],
+      "title": "RevisionChangeType",
+      "type": "string"
+    },
+    "RevisionDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "$ref": "#/$defs/RevisionEntityType"
+        },
+        "entity_id": {
+          "format": "uuid",
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "change_type": {
+          "$ref": "#/$defs/RevisionChangeType"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "navigation": {
+          "$ref": "#/$defs/RevisionNavigation"
+        },
+        "affected_document_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Affected Document Ids",
+          "type": "array"
+        },
+        "affected_unit_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Affected Unit Ids",
+          "type": "array"
+        },
+        "affected_lineage_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Affected Lineage Ids",
+          "type": "array"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/ResourceLink"
+          },
+          "title": "Links",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "entity_type",
+        "entity_id",
+        "revision",
+        "change_type",
+        "created_at",
+        "navigation",
+        "affected_document_ids",
+        "affected_unit_ids",
+        "affected_lineage_ids",
+        "links"
+      ],
+      "title": "RevisionDTO",
+      "type": "object"
+    },
+    "RevisionEntityType": {
+      "description": "Entity types tracked in the revision log.",
+      "enum": [
+        "source",
+        "document",
+        "knowledge_unit",
+        "citation",
+        "conflict"
+      ],
+      "title": "RevisionEntityType",
+      "type": "string"
+    },
+    "RevisionNavigation": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "anyOf": [
+            {
+              "enum": [
+                "added",
+                "modified",
+                "moved",
+                "unchanged",
+                "removed",
+                "published",
+                "stale",
+                "refreshed",
+                "freshness_policy",
+                "approved_conversation_candidate",
+                "detected",
+                "reviewed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Id"
+        },
+        "previous_document_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Document Id"
+        },
+        "unit_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit Id"
+        },
+        "previous_unit_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Unit Id"
+        },
+        "document_checksum": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Checksum"
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Hash"
+        },
+        "previous_content_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Content Hash"
+        },
+        "reverted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reverted"
+        }
+      },
+      "title": "RevisionNavigation",
+      "type": "object"
+    },
+    "SafeCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "enum": [
+            "top_k_contract",
+            "recall_at_k",
+            "mean_reciprocal_rank",
+            "no_answer_accuracy",
+            "retrieval_evidence_citation_coverage",
+            "stale_or_retired_hits",
+            "stale_isolation_configuration",
+            "retrieval_degradation",
+            "regression_gate"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "actual": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actual"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^(?:(?:>=|<=|==)[0-9]+(?:\\.[0-9]+)?|allowed|false|pass|0 include_stale cases|compatible healthy baseline|baseline when regression policy is supplied)$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        }
+      },
+      "required": [
+        "name",
+        "passed",
+        "actual"
+      ],
+      "title": "SafeCheck",
+      "type": "object"
+    },
+    "SafeMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "case_count": {
+          "minimum": 0,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "answerable_count": {
+          "minimum": 0,
+          "title": "Answerable Count",
+          "type": "integer"
+        },
+        "no_answer_count": {
+          "minimum": 0,
+          "title": "No Answer Count",
+          "type": "integer"
+        },
+        "mean_recall": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean Recall"
+        },
+        "mean_precision": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean Precision"
+        },
+        "mean_reciprocal_rank": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean Reciprocal Rank"
+        },
+        "mean_ndcg": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean Ndcg"
+        },
+        "hit_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hit Rate"
+        },
+        "no_answer_accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "No Answer Accuracy"
+        }
+      },
+      "required": [
+        "case_count",
+        "answerable_count",
+        "no_answer_count",
+        "mean_recall",
+        "mean_precision",
+        "mean_reciprocal_rank",
+        "mean_ndcg",
+        "hit_rate",
+        "no_answer_accuracy"
+      ],
+      "title": "SafeMetrics",
+      "type": "object"
+    },
+    "SafeQualityReport": {
+      "additionalProperties": false,
+      "properties": {
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "metrics": {
+          "$ref": "#/$defs/SafeMetrics"
+        },
+        "citation_coverage": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Citation Coverage"
+        },
+        "stale_hits": {
+          "minimum": 0,
+          "title": "Stale Hits",
+          "type": "integer"
+        },
+        "degraded": {
+          "title": "Degraded",
+          "type": "boolean"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/SafeCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "passed",
+        "metrics",
+        "citation_coverage",
+        "stale_hits",
+        "degraded",
+        "checks"
+      ],
+      "title": "SafeQualityReport",
+      "type": "object"
+    },
+    "UnitChangeKind": {
+      "description": "How one knowledge unit changed between two document versions.",
+      "enum": [
+        "added",
+        "modified",
+        "moved",
+        "unchanged",
+        "removed"
+      ],
+      "title": "UnitChangeKind",
+      "type": "string"
+    },
+    "UnitDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "source_id": {
+          "format": "uuid",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "document_id": {
+          "format": "uuid",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "lineage_id": {
+          "format": "uuid",
+          "title": "Lineage Id",
+          "type": "string"
+        },
+        "ordinal": {
+          "minimum": 0,
+          "title": "Ordinal",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/KnowledgeUnitStatus"
+        },
+        "start_char": {
+          "minimum": 0,
+          "title": "Start Char",
+          "type": "integer"
+        },
+        "end_char": {
+          "exclusiveMinimum": 0,
+          "title": "End Char",
+          "type": "integer"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/ResourceLink"
+          },
+          "title": "Links",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "document_id",
+        "lineage_id",
+        "ordinal",
+        "status",
+        "start_char",
+        "end_char",
+        "content_hash",
+        "links"
+      ],
+      "title": "UnitDTO",
+      "type": "object"
+    }
+  }
+}
